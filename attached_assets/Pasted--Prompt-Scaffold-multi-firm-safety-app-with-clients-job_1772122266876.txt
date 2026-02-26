@@ -1,0 +1,136 @@
+
+
+Prompt: Scaffold multi‑firm safety app with clients, jobsites, inspections, and code guidance
+You are building a production‑quality web application for small construction safety firms (2–10 inspectors) who work mostly in NYC and need an all‑in‑one tool for:
+* Managing clients and jobsites.
+* Performing inspections and logging observations.
+* Linking issues to NYC code references (Chapter 33 + Administrative Code) with plain‑English guidance.
+1. Overall architecture
+* Use a modern JavaScript/TypeScript stack that runs well on Replit.
+* Frontend: React or Next.js with a responsive dashboard layout that works on desktop and mobile browsers.
+* Backend: For now, use in‑memory or simple JSON data stores and mock auth; I will connect Supabase or another real backend later.
+* App design: multi‑organization, multi‑user:
+    * Organization = safety firm.
+    * Users belong to exactly one organization and have a role: Owner, Admin, or Inspector.
+    * All data (clients, jobsites, inspections, observations, code references) is scoped to an organization.
+2. Data models (mocked for now)
+Please define types/interfaces and example (seed) data for these entities:
+1. Organization and users
+* Organization: id, name, logoUrl?.
+* User: id, organizationId, name, email, role ("Owner" | "Admin" | "Inspector").
+* Use a simple hardcoded “currentUser” for now instead of real auth, but structure the code so I can plug in real auth later.
+1. Clients and jobsites
+* Client: id, organizationId, name, contactName, contactEmail, contactPhone, notes?.
+* Jobsite:
+    * id, organizationId, clientId.
+    * name.
+    * address, borough, bin, dobJobNumber.
+    * projectType (e.g., "NB", "ALT", "DEM").
+    * buildingType or stories (number).
+    * Flags like hasScaffold, hasHoist, hasCrane, hasExcavation.
+1. Code references (for Chapter 33 + Admin Code)
+* CodeReference:
+    * id: e.g., "BC 3301.2" or "AC 28-301.1".
+    * codeType: "BC" | "AC".
+    * chapter?: number (33 for Chapter 33 sections, null otherwise).
+    * sectionNumber: string.
+    * title: short title in plain English.
+    * plainSummary: 2–3 sentences of dummy text in plain English (I will replace these).
+    * tags: string[] (e.g., ["fall protection", "housekeeping", "public protection"]).
+    * officialUrl: placeholder URL for where the full official code text lives online.
+* IMPORTANT: Do NOT include full verbatim code text; only use dummy summaries and metadata.
+Seed at least 15–20 sample CodeReference entries covering common Chapter 33 topics (scaffolds, hoists, cranes, excavations, housekeeping, public protection, logs, etc.) and a few Administrative Code sections.
+1. Inspections and observations
+* InspectionTemplate:
+    * id, organizationId, name (e.g., "Daily SSM Walk", "Weekly Safety Audit", "Scaffold Inspection").
+    * description.
+    * category (e.g., "General", "Scaffold", "Hoist").
+* Inspection:
+    * id, organizationId, jobsiteId, templateId.
+    * date, inspectorUserId.
+    * status: "Draft" | "Submitted".
+* Observation:
+    * id, organizationId, inspectionId, jobsiteId.
+    * createdAt.
+    * createdByUserId.
+    * location (e.g., "Level 12, North elevation").
+    * description.
+    * category (e.g., "Fall Protection", "Housekeeping", "Public Protection", "Administrative").
+    * severity: "Low" | "Medium" | "High".
+    * status: "Open" | "In progress" | "Corrected" | "Verified".
+    * assignedTo? (name or user ID).
+    * dueDate?.
+    * photoUrls: string[] (mock URLs).
+    * linkedCodeReferenceIds: string[] of CodeReference.id.
+    * recommendedActions: string[] (plain‑English corrective steps).
+3. UI: navigation and layout
+Create a simple, responsive layout with a top or side navigation that includes:
+* Dashboard (placeholder summary).
+* Clients.
+* Jobsites.
+* Inspections.
+* Code Library (for the CodeReference entries).
+Make sure navigation reflects the organization context (assume one org is already selected via the mocked currentUser).
+4. UI: Clients & Jobsites
+Clients page:
+* Table/list of clients for the current organization with name, primary contact, and number of jobsites.
+* Ability to click a client to see details and list of their jobsites (view‑only for now; create/edit can be stubbed).
+Jobsites page:
+* Table/list of jobsites showing client name, jobsite name, borough, project type, and key flags (scaffold/hoist/crane/excavation).
+* Clicking a jobsite opens a Jobsite Detail view with:
+    * Jobsite profile info.
+    * Buttons/links for:
+        * “Open in DOB NOW” (placeholder URL using address/BIN).
+        * “Open in BIS” (placeholder URL using address/BIN).
+    * A section listing the most recent inspections for that jobsite.
+5. UI: Inspections & Observations
+Inspections page:
+* List of inspections for the current organization with columns: date, jobsite, template name, inspector, status.
+* “New Inspection” button:
+    * Step 1: select jobsite.
+    * Step 2: select inspection template.
+    * Step 3: create inspection record and navigate to its detail page.
+Inspection Detail page:
+* Show inspection header (jobsite, template, date, inspector, status).
+* Observations section:
+    * List of observations for this inspection.
+    * “Add Observation” button that opens a form with fields described above (location, description, category, severity, assignedTo, dueDate, photo URLs as text fields for now).
+    * Ability to change observation status (Open/In progress/Corrected/Verified).
+6. Code guidance linking (no AI, just UI + lookups)
+On the “Add Observation” and “Edit Observation” screen:
+* Add a “Suggest Code References” area:
+    * A simple search input that filters CodeReference entries by tag/keyword (search in title, plainSummary, and tags).
+    * Show matching CodeReference items in a list with section number, title, tags, and a “Link” button.
+* When the user clicks “Link”, add that CodeReference.id to linkedCodeReferenceIds for the observation.
+* In the Observation detail line, show the linked code references as small chips: e.g., “BC 3301.2”, with hover text showing title or plainSummary snippet.
+* Also show recommendedActions for the observation as a small list under the description (seed with 1–2 dummy actions per observation for now).
+We are not calling any external APIs or doing real embeddings yet—just local search/filter on the CodeReference list.
+7. Code Library page
+Create a “Code Library” page:
+* Search bar that filters CodeReference by keyword (identifier, title, summary, tags).
+* Tag filters (chips or dropdown) for common categories like “scaffolds”, “hoists”, “cranes”, “excavations”, “housekeeping”, “public protection”.
+* List view of matching code references with:
+    * Identifier (e.g., "BC 3301.2").
+    * Title.
+    * Tags.
+    * Plain summary (shortened).
+    * A “View official text online” link using officialUrl that opens in a new tab.
+8. Disclaimer
+Add a visible disclaimer component (e.g., in the footer and on the Code Library and Observation details pages) with placeholder text like:
+* “This app provides general safety and compliance guidance for informational purposes only and does not constitute legal advice or an official interpretation of any law or regulation. Users remain responsible for consulting current official code texts and qualified professionals. No warranties are made regarding completeness or accuracy.”
+Put this text in a single shared component so I can edit it later.
+9. Implementation details and developer notes
+* Keep all mocked data in clearly named files (e.g., mockOrganizations, mockUsers, mockClients, mockJobsites, mockCodeReferences, mockInspectionTemplates, mockInspections, mockObservations).
+* Use React context or a simple state management pattern so the app can be easily wired to a real backend later.
+* After generating the project:
+    * Explain the main folders and files.
+    * Point out exactly where I can:
+        * Add/edit CodeReference entries.
+        * Add new inspection templates.
+        * Change the disclaimer text.
+    * Show how to run the app on Replit and where to look in the UI to test:
+        * Creating an inspection.
+        * Adding an observation.
+        * Linking it to code references.
+Focus on shipping a clean, working v1 with mock data and multi‑org structure, ready for me to later add real authentication, database, time tracking, credential tracking, and exports.
+
