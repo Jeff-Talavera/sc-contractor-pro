@@ -1,13 +1,15 @@
 import type {
   Organization, User, Client, Jobsite, CodeReference,
   InspectionTemplate, Inspection, Observation,
+  JobsitePermit, JobsiteExternalEvent,
   InsertClient, InsertJobsite, InsertInspection, InsertObservation
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import {
   mockOrganizations, mockUsers, currentUser as mockCurrentUser,
   mockClients, mockJobsites, mockCodeReferences,
-  mockInspectionTemplates, mockInspections, mockObservations
+  mockInspectionTemplates, mockInspections, mockObservations,
+  mockPermits, mockExternalEvents
 } from "./mockData";
 
 export interface IStorage {
@@ -24,6 +26,7 @@ export interface IStorage {
   getJobsitesByClient(clientId: string): Jobsite[];
   getJobsite(id: string): Jobsite | undefined;
   createJobsite(orgId: string, data: InsertJobsite): Jobsite;
+  updateJobsite(id: string, updates: Partial<Jobsite>): Jobsite | undefined;
 
   getCodeReferences(): CodeReference[];
   getCodeReference(id: string): CodeReference | undefined;
@@ -42,6 +45,9 @@ export interface IStorage {
   getObservation(id: string): Observation | undefined;
   createObservation(orgId: string, userId: string, data: InsertObservation): Observation;
   updateObservation(id: string, updates: Partial<Observation>): Observation | undefined;
+
+  getPermitsByJobsite(jobsiteId: string): JobsitePermit[];
+  getExternalEventsByJobsite(jobsiteId: string): JobsiteExternalEvent[];
 }
 
 export class MemStorage implements IStorage {
@@ -53,6 +59,8 @@ export class MemStorage implements IStorage {
   private templates: Map<string, InspectionTemplate>;
   private inspections: Map<string, Inspection>;
   private observations: Map<string, Observation>;
+  private permits: Map<string, JobsitePermit>;
+  private externalEvents: Map<string, JobsiteExternalEvent>;
 
   constructor() {
     this.organizations = new Map(mockOrganizations.map(o => [o.id, o]));
@@ -63,6 +71,8 @@ export class MemStorage implements IStorage {
     this.templates = new Map(mockInspectionTemplates.map(t => [t.id, t]));
     this.inspections = new Map(mockInspections.map(i => [i.id, i]));
     this.observations = new Map(mockObservations.map(o => [o.id, o]));
+    this.permits = new Map(mockPermits.map(p => [p.id, p]));
+    this.externalEvents = new Map(mockExternalEvents.map(e => [e.id, e]));
   }
 
   getCurrentUser(): User {
@@ -110,6 +120,13 @@ export class MemStorage implements IStorage {
   createJobsite(orgId: string, data: InsertJobsite): Jobsite {
     const jobsite: Jobsite = { id: `job-${randomUUID().slice(0, 8)}`, organizationId: orgId, ...data };
     this.jobsites.set(jobsite.id, jobsite);
+    return jobsite;
+  }
+
+  updateJobsite(id: string, updates: Partial<Jobsite>): Jobsite | undefined {
+    const jobsite = this.jobsites.get(id);
+    if (!jobsite) return undefined;
+    Object.assign(jobsite, updates);
     return jobsite;
   }
 
@@ -189,6 +206,14 @@ export class MemStorage implements IStorage {
     if (!obs) return undefined;
     Object.assign(obs, updates);
     return obs;
+  }
+
+  getPermitsByJobsite(jobsiteId: string): JobsitePermit[] {
+    return Array.from(this.permits.values()).filter(p => p.jobsiteId === jobsiteId);
+  }
+
+  getExternalEventsByJobsite(jobsiteId: string): JobsiteExternalEvent[] {
+    return Array.from(this.externalEvents.values()).filter(e => e.jobsiteId === jobsiteId);
   }
 }
 

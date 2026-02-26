@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation, Link } from "wouter";
 import type {
   Inspection, InspectionTemplate, Jobsite, User, Observation,
-  CodeReference, Client
+  CodeReference, Client, AiFinding
 } from "@shared/schema";
 import { insertObservationSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -27,7 +28,7 @@ import {
   ArrowLeft, Plus, Search, ClipboardCheck,
   Calendar, MapPin, User as UserIcon, ChevronRight,
   AlertTriangle, CheckCircle2, Clock, XCircle,
-  Link2, X
+  Link2, X, Camera, Sparkles, Upload, ImageIcon, Loader2
 } from "lucide-react";
 
 const severityColors: Record<string, string> = {
@@ -42,6 +43,296 @@ const statusIcons: Record<string, any> = {
   "Corrected": CheckCircle2,
   "Verified": CheckCircle2,
 };
+
+function inferCategory(label: string): string {
+  const lower = label.toLowerCase();
+  if (lower.includes("guardrail") || lower.includes("fall") || lower.includes("harness") || lower.includes("open edge") || lower.includes("height")) return "Fall Protection";
+  if (lower.includes("scaffold") || lower.includes("plank") || lower.includes("toe board")) return "Scaffolds";
+  if (lower.includes("debris") || lower.includes("housekeep") || lower.includes("walkway") || lower.includes("storage")) return "Housekeeping";
+  if (lower.includes("fence") || lower.includes("sidewalk") || lower.includes("shed") || lower.includes("pedestrian") || lower.includes("public")) return "Public Protection";
+  if (lower.includes("crane") || lower.includes("hoist") || lower.includes("rigging")) return "Cranes";
+  if (lower.includes("excavat") || lower.includes("shoring")) return "Excavations";
+  return "Fall Protection";
+}
+
+function inferActions(label: string): string[] {
+  const cat = inferCategory(label);
+  const actionMap: Record<string, string[]> = {
+    "Fall Protection": ["Install guardrail or safety net at open edge.", "Ensure workers use personal fall arrest systems."],
+    "Scaffolds": ["Inspect and correct scaffold deficiency.", "Ensure competent person verifies scaffold condition."],
+    "Housekeeping": ["Clear debris and restore clear walkways.", "Implement regular housekeeping schedule."],
+    "Public Protection": ["Repair or secure protection measures.", "Verify public protection meets code requirements."],
+    "Cranes": ["Review crane/hoist operation log.", "Verify operator certification is current."],
+    "Excavations": ["Inspect shoring and sloping conditions.", "Verify adjacent structure protection."],
+  };
+  return actionMap[cat] ?? ["Review and correct identified condition.", "Document corrective actions taken."];
+}
+
+interface AiFindingWithMeta extends AiFinding {
+  selected: boolean;
+  editedDescription: string;
+  photoIndex: number;
+}
+
+function PhotoAiDialog({
+  inspectionId,
+  jobsiteId,
+  onClose,
+}: {
+  inspectionId: string;
+  jobsiteId: string;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [step, setStep] = useState<"upload" | "review" | "done">("upload");
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
+  const [findings, setFindings] = useState<AiFindingWithMeta[]>([]);
+  const [createdIds, setCreatedIds] = useState<string[]>([]);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const { data: codeRefs } = useQuery<CodeReference[]>({ queryKey: ["/api/code-references"] });
+
+  const codeRefMap = new Map(codeRefs?.map(r => [r.id, r]) ?? []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const urls: string[] = [];
+    for (let i = 0; i < Math.min(files.length, 3); i++) {
+      urls.push(URL.createObjectURL(files[i]));
+    }
+    setPhotoPreviewUrls(urls);
+  };
+
+  const handleAnalyze = async () => {
+    setAnalyzing(true);
+    try {
+      const allFindings: AiFindingWithMeta[] = [];
+      for (let i = 0; i < photoPreviewUrls.length; i++) {
+        const res = await apiRequest("POST", "/api/ai/analyze-photo", {});
+        const data = await res.json();
+        for (const f of data.findings as AiFinding[]) {
+          allFindings.push({
+            ...f,
+            selected: true,
+            editedDescription: f.label,
+            photoIndex: i,
+          });
+        }
+      }
+      setFindings(allFindings);
+      setStep("review");
+    } catch (err: any) {
+      toast({ title: "Analysis failed", description: err.message, variant: "destructive" });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleCreateObservations = async () => {
+    const selected = findings.filter(f => f.selected);
+    if (selected.length === 0) {
+      toast({ title: "No findings selected", variant: "destructive" });
+      return;
+    }
+    setCreating(true);
+    const ids: string[] = [];
+    try {
+      for (const finding of selected) {
+        const category = inferCategory(finding.label);
+        const actions = inferActions(finding.label);
+        const sourcePhoto = photoPreviewUrls[finding.photoIndex] ?? photoPreviewUrls[0];
+        const res = await apiRequest("POST", "/api/observations", {
+          inspectionId,
+          jobsiteId,
+          location: `See photo ${finding.photoIndex + 1}`,
+          description: finding.editedDescription,
+          category,
+          severity: "Medium",
+          status: "Open",
+          photoUrls: [sourcePhoto],
+          linkedCodeReferenceIds: finding.suggestedCodeReferenceIds,
+          recommendedActions: actions,
+          source: "ai",
+          aiFindings: [finding],
+        });
+        const obs = await res.json();
+        ids.push(obs.id);
+      }
+      setCreatedIds(ids);
+      queryClient.invalidateQueries({ queryKey: ["/api/inspections", inspectionId, "observations"] });
+      setStep("done");
+      toast({ title: `${ids.length} observation${ids.length !== 1 ? "s" : ""} created from AI analysis` });
+    } catch (err: any) {
+      toast({ title: "Error creating observations", description: err.message, variant: "destructive" });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5" />
+          Photo Check (AI)
+        </DialogTitle>
+      </DialogHeader>
+
+      <div className="rounded-md bg-blue-500/10 p-3 text-sm text-blue-700 dark:text-blue-300" data-testid="text-ai-disclaimer">
+        AI suggestions are for guidance only. A qualified safety professional must review and confirm all findings.
+      </div>
+
+      {step === "upload" && (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Upload 1-3 photos from the jobsite. Our AI will analyze them for potential safety observations.
+          </p>
+
+          <div
+            className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+            onClick={() => fileInputRef.current?.click()}
+            data-testid="dropzone-photo-upload"
+          >
+            <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm font-medium">Click to upload photos</p>
+            <p className="text-xs text-muted-foreground mt-1">JPG, PNG up to 3 files</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleFileChange}
+              data-testid="input-photo-upload"
+            />
+          </div>
+
+          {photoPreviewUrls.length > 0 && (
+            <div className="flex gap-3 flex-wrap">
+              {photoPreviewUrls.map((url, i) => (
+                <div key={i} className="w-24 h-24 rounded-md border overflow-hidden bg-muted">
+                  <img src={url} alt={`Preview ${i + 1}`} className="w-full h-full object-cover" data-testid={`img-preview-${i}`} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          <Button
+            className="w-full"
+            disabled={photoPreviewUrls.length === 0 || analyzing}
+            onClick={handleAnalyze}
+            data-testid="button-analyze-photos"
+          >
+            {analyzing ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Analyzing...</>
+            ) : (
+              <><Sparkles className="h-4 w-4 mr-2" /> Analyze Photos</>
+            )}
+          </Button>
+        </div>
+      )}
+
+      {step === "review" && (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {findings.length} potential finding{findings.length !== 1 ? "s" : ""} detected. Select which ones to create as observations.
+          </p>
+
+          <div className="space-y-3">
+            {findings.map((finding, idx) => (
+              <Card key={finding.id} className={finding.selected ? "border-primary/50" : "opacity-60"} data-testid={`card-finding-${idx}`}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      checked={finding.selected}
+                      onCheckedChange={(checked) => {
+                        setFindings(prev => prev.map((f, i) => i === idx ? { ...f, selected: !!checked } : f));
+                      }}
+                      data-testid={`checkbox-finding-${idx}`}
+                    />
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium">{finding.label}</span>
+                        <Badge variant="secondary" className="text-xs">
+                          {Math.round(finding.confidence * 100)}% confidence
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          Photo {finding.photoIndex + 1}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {finding.suggestedCodeReferenceIds.map(refId => (
+                          <Tooltip key={refId}>
+                            <TooltipTrigger asChild>
+                              <Badge variant="outline" className="text-xs cursor-help">
+                                {refId}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="text-xs max-w-xs">{codeRefMap.get(refId)?.title ?? refId}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ))}
+                      </div>
+                      <Textarea
+                        value={finding.editedDescription}
+                        onChange={(e) => {
+                          setFindings(prev => prev.map((f, i) => i === idx ? { ...f, editedDescription: e.target.value } : f));
+                        }}
+                        className="text-sm min-h-[60px]"
+                        data-testid={`textarea-finding-${idx}`}
+                      />
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>Category: {inferCategory(finding.label)}</span>
+                        <span>|</span>
+                        <span>Severity: Medium (editable later)</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => { setStep("upload"); setFindings([]); }} className="flex-1" data-testid="button-back-upload">
+              Back
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={handleCreateObservations}
+              disabled={creating || findings.filter(f => f.selected).length === 0}
+              data-testid="button-create-ai-observations"
+            >
+              {creating ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating...</>
+              ) : (
+                <>Create {findings.filter(f => f.selected).length} Observation{findings.filter(f => f.selected).length !== 1 ? "s" : ""}</>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {step === "done" && (
+        <div className="space-y-4 text-center py-4">
+          <CheckCircle2 className="h-12 w-12 mx-auto text-green-600" />
+          <p className="text-sm font-medium">
+            {createdIds.length} observation{createdIds.length !== 1 ? "s" : ""} created successfully
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Observations have been added to this inspection with AI source tags.
+          </p>
+          <Button onClick={onClose} className="w-full" data-testid="button-close-ai-dialog">
+            Done
+          </Button>
+        </div>
+      )}
+    </DialogContent>
+  );
+}
 
 function NewInspectionWizard({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState(1);
@@ -307,6 +598,7 @@ function AddObservationForm({
       linkedCodeReferenceIds: [] as string[],
       recommendedActions: [] as string[],
       recommendedAction: "",
+      source: "manual" as const,
     },
   });
 
@@ -444,6 +736,7 @@ function AddObservationForm({
 
 function InspectionDetail({ id }: { id: string }) {
   const [showAddObs, setShowAddObs] = useState(false);
+  const [showAiDialog, setShowAiDialog] = useState(false);
   const { toast } = useToast();
 
   const { data: inspection, isLoading } = useQuery<Inspection>({
@@ -554,18 +847,32 @@ function InspectionDetail({ id }: { id: string }) {
             <h2 className="text-lg font-semibold" data-testid="text-observations-header">
               Observations ({observations?.length ?? 0})
             </h2>
-            <Dialog open={showAddObs} onOpenChange={setShowAddObs}>
-              <Button onClick={() => setShowAddObs(true)} data-testid="button-add-observation">
-                <Plus className="h-4 w-4 mr-2" /> Add Observation
-              </Button>
-              {showAddObs && (
-                <AddObservationForm
-                  inspectionId={inspection.id}
-                  jobsiteId={inspection.jobsiteId}
-                  onClose={() => setShowAddObs(false)}
-                />
-              )}
-            </Dialog>
+            <div className="flex items-center gap-2">
+              <Dialog open={showAiDialog} onOpenChange={setShowAiDialog}>
+                <Button variant="outline" onClick={() => setShowAiDialog(true)} data-testid="button-photo-ai">
+                  <Camera className="h-4 w-4 mr-2" /> Photo Check (AI)
+                </Button>
+                {showAiDialog && (
+                  <PhotoAiDialog
+                    inspectionId={inspection.id}
+                    jobsiteId={inspection.jobsiteId}
+                    onClose={() => setShowAiDialog(false)}
+                  />
+                )}
+              </Dialog>
+              <Dialog open={showAddObs} onOpenChange={setShowAddObs}>
+                <Button onClick={() => setShowAddObs(true)} data-testid="button-add-observation">
+                  <Plus className="h-4 w-4 mr-2" /> Add Observation
+                </Button>
+                {showAddObs && (
+                  <AddObservationForm
+                    inspectionId={inspection.id}
+                    jobsiteId={inspection.jobsiteId}
+                    onClose={() => setShowAddObs(false)}
+                  />
+                )}
+              </Dialog>
+            </div>
           </div>
 
           {!observations || observations.length === 0 ? (
@@ -587,6 +894,11 @@ function InspectionDetail({ id }: { id: string }) {
                               {obs.severity}
                             </Badge>
                             <Badge variant="secondary">{obs.category}</Badge>
+                            {obs.source === "ai" && (
+                              <Badge className="bg-purple-500/15 text-purple-700 dark:text-purple-400" variant="secondary" data-testid={`badge-ai-${obs.id}`}>
+                                <Sparkles className="h-3 w-3 mr-1" /> AI
+                              </Badge>
+                            )}
                             <span className="text-xs text-muted-foreground">{obs.location}</span>
                           </div>
                           <p className="text-sm mt-2">{obs.description}</p>
@@ -647,6 +959,12 @@ function InspectionDetail({ id }: { id: string }) {
                         {obs.assignedTo && <span>Assigned: {obs.assignedTo}</span>}
                         {obs.dueDate && <span>Due: {obs.dueDate}</span>}
                         <span>Created: {new Date(obs.createdAt).toLocaleDateString()}</span>
+                        {obs.source === "ai" && obs.aiFindings && obs.aiFindings.length > 0 && (
+                          <span className="flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" />
+                            AI confidence: {Math.round(obs.aiFindings[0].confidence * 100)}%
+                          </span>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

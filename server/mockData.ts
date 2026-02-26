@@ -1,6 +1,7 @@
 import type {
   Organization, User, Client, Jobsite, CodeReference,
-  InspectionTemplate, Inspection, Observation
+  InspectionTemplate, Inspection, Observation,
+  JobsitePermit, JobsiteExternalEvent
 } from "@shared/schema";
 
 export const mockOrganizations: Organization[] = [
@@ -59,6 +60,7 @@ export const mockJobsites: Jobsite[] = [
     address: "1 Vanderbilt Ave", borough: "Manhattan", bin: "1015862", dobJobNumber: "121587643",
     projectType: "NB", buildingType: "Commercial", stories: 67,
     hasScaffold: true, hasHoist: true, hasCrane: true, hasExcavation: false,
+    monitorPublicRecords: true,
   },
   {
     id: "job-2", organizationId: "org-1", clientId: "client-1",
@@ -66,6 +68,7 @@ export const mockJobsites: Jobsite[] = [
     address: "500 W 33rd St", borough: "Manhattan", bin: "1012456", dobJobNumber: "121598712",
     projectType: "NB", buildingType: "Mixed-Use", stories: 52,
     hasScaffold: true, hasHoist: true, hasCrane: true, hasExcavation: true,
+    monitorPublicRecords: true,
   },
   {
     id: "job-3", organizationId: "org-1", clientId: "client-2",
@@ -73,6 +76,7 @@ export const mockJobsites: Jobsite[] = [
     address: "250 Cadman Plaza W", borough: "Brooklyn", bin: "3002451", dobJobNumber: "321456789",
     projectType: "ALT", buildingType: "Residential", stories: 18,
     hasScaffold: true, hasHoist: false, hasCrane: false, hasExcavation: false,
+    monitorPublicRecords: false,
   },
   {
     id: "job-4", organizationId: "org-1", clientId: "client-3",
@@ -80,6 +84,7 @@ export const mockJobsites: Jobsite[] = [
     address: "29-11 Queens Plaza N", borough: "Queens", bin: "4004523", dobJobNumber: "421789012",
     projectType: "NB", buildingType: "Commercial", stories: 35,
     hasScaffold: true, hasHoist: true, hasCrane: true, hasExcavation: true,
+    monitorPublicRecords: true,
   },
   {
     id: "job-5", organizationId: "org-1", clientId: "client-4",
@@ -87,6 +92,7 @@ export const mockJobsites: Jobsite[] = [
     address: "200 Greenwich St", borough: "Manhattan", bin: "1001234", dobJobNumber: "121345678",
     projectType: "ALT", buildingType: "Commercial", stories: 44,
     hasScaffold: true, hasHoist: false, hasCrane: false, hasExcavation: false,
+    monitorPublicRecords: false,
   },
   {
     id: "job-6", organizationId: "org-1", clientId: "client-2",
@@ -94,6 +100,7 @@ export const mockJobsites: Jobsite[] = [
     address: "1400 Pelham Pkwy S", borough: "Bronx", bin: "2045678", dobJobNumber: "221567890",
     projectType: "DEM", buildingType: "Institutional", stories: 6,
     hasScaffold: false, hasHoist: false, hasCrane: true, hasExcavation: true,
+    monitorPublicRecords: true,
   },
 ];
 
@@ -274,7 +281,8 @@ export const mockObservations: Observation[] = [
     assignedTo: "Robert Kowalski", dueDate: "2026-02-27",
     photoUrls: [],
     linkedCodeReferenceIds: ["BC-3314.1", "BC-3306.5"],
-    recommendedActions: ["Install temporary guardrail system immediately.", "Ensure all workers at elevation have personal fall arrest systems."]
+    recommendedActions: ["Install temporary guardrail system immediately.", "Ensure all workers at elevation have personal fall arrest systems."],
+    source: "manual",
   },
   {
     id: "obs-2", organizationId: "org-1", inspectionId: "insp-1", jobsiteId: "job-1",
@@ -285,7 +293,8 @@ export const mockObservations: Observation[] = [
     assignedTo: "James Chen",
     photoUrls: [],
     linkedCodeReferenceIds: ["BC-3316.1"],
-    recommendedActions: ["Clear debris from egress path.", "Relocate combustible materials to designated storage area."]
+    recommendedActions: ["Clear debris from egress path.", "Relocate combustible materials to designated storage area."],
+    source: "manual",
   },
   {
     id: "obs-3", organizationId: "org-1", inspectionId: "insp-2", jobsiteId: "job-1",
@@ -296,7 +305,8 @@ export const mockObservations: Observation[] = [
     assignedTo: "Robert Kowalski",
     photoUrls: [],
     linkedCodeReferenceIds: ["BC-3306.1", "BC-3306.5"],
-    recommendedActions: ["Re-deck scaffold planking to eliminate gaps.", "Inspect all scaffold bays for similar conditions."]
+    recommendedActions: ["Re-deck scaffold planking to eliminate gaps.", "Inspect all scaffold bays for similar conditions."],
+    source: "manual",
   },
   {
     id: "obs-4", organizationId: "org-1", inspectionId: "insp-3", jobsiteId: "job-2",
@@ -306,7 +316,8 @@ export const mockObservations: Observation[] = [
     category: "Public Protection", severity: "Medium", status: "Open",
     photoUrls: [],
     linkedCodeReferenceIds: ["BC-3303.1", "BC-3301.9"],
-    recommendedActions: ["Replace non-functional lighting fixtures.", "Verify all sidewalk shed lighting is operational before end of shift."]
+    recommendedActions: ["Replace non-functional lighting fixtures.", "Verify all sidewalk shed lighting is operational before end of shift."],
+    source: "manual",
   },
   {
     id: "obs-5", organizationId: "org-1", inspectionId: "insp-4", jobsiteId: "job-3",
@@ -316,6 +327,165 @@ export const mockObservations: Observation[] = [
     category: "Administrative", severity: "Low", status: "Open",
     photoUrls: [],
     linkedCodeReferenceIds: ["BC-3311.3"],
-    recommendedActions: ["Replace or re-certify expired fire extinguishers.", "Post current SDS at all chemical storage locations."]
+    recommendedActions: ["Replace or re-certify expired fire extinguishers.", "Post current SDS at all chemical storage locations."],
+    source: "manual",
+  },
+];
+
+export const mockPermits: JobsitePermit[] = [
+  {
+    id: "pmt-1", jobsiteId: "job-1", source: "DOB_NOW", permitNumber: "PW1-121587643-01",
+    jobFilingNumber: "B00987654", workType: "NB", permitType: "BUILDING",
+    status: "ISSUED", issueDate: "2025-06-15", expirationDate: "2027-06-15",
+    description: "New building construction - 67-story commercial tower",
+    rawLocation: "1 Vanderbilt Ave, Manhattan",
+    externalUrl: "https://a810-dobnow.nyc.gov/publish/#!/jobs?bin=1015862",
+    createdAt: "2025-06-15T00:00:00Z", updatedAt: "2025-06-15T00:00:00Z",
+  },
+  {
+    id: "pmt-2", jobsiteId: "job-1", source: "DOB_NOW", permitNumber: "PW1-121587643-02",
+    workType: "NB", permitType: "ELECTRICAL",
+    status: "ISSUED", issueDate: "2025-08-01", expirationDate: "2027-08-01",
+    description: "Electrical work - full building electrical installation",
+    rawLocation: "1 Vanderbilt Ave, Manhattan",
+    externalUrl: "https://a810-dobnow.nyc.gov/publish/#!/jobs?bin=1015862",
+    createdAt: "2025-08-01T00:00:00Z", updatedAt: "2025-08-01T00:00:00Z",
+  },
+  {
+    id: "pmt-3", jobsiteId: "job-1", source: "BIS", permitNumber: "PW1-121587643-03",
+    workType: "NB", permitType: "PLUMBING",
+    status: "EXPIRED", issueDate: "2024-11-10", expirationDate: "2025-11-10",
+    description: "Plumbing rough-in - floors 1 through 30",
+    rawLocation: "1 Vanderbilt Ave, Manhattan",
+    externalUrl: "https://a810-bisweb.nyc.gov/bisweb/PropertyProfileOverviewServlet?bin=1015862",
+    createdAt: "2024-11-10T00:00:00Z", updatedAt: "2025-11-11T00:00:00Z",
+  },
+  {
+    id: "pmt-4", jobsiteId: "job-2", source: "DOB_NOW", permitNumber: "PW1-121598712-01",
+    jobFilingNumber: "B00876543", workType: "NB", permitType: "BUILDING",
+    status: "ISSUED", issueDate: "2025-03-20", expirationDate: "2027-03-20",
+    description: "New building construction - 52-story mixed-use tower",
+    rawLocation: "500 W 33rd St, Manhattan",
+    externalUrl: "https://a810-dobnow.nyc.gov/publish/#!/jobs?bin=1012456",
+    createdAt: "2025-03-20T00:00:00Z", updatedAt: "2025-03-20T00:00:00Z",
+  },
+  {
+    id: "pmt-5", jobsiteId: "job-2", source: "DOB_NOW", permitNumber: "PW1-121598712-02",
+    workType: "NB", permitType: "CRANE/DERRICK",
+    status: "ISSUED", issueDate: "2025-09-15", expirationDate: "2026-09-15",
+    description: "Tower crane installation and operation permit",
+    rawLocation: "500 W 33rd St, Manhattan",
+    externalUrl: "https://a810-dobnow.nyc.gov/publish/#!/jobs?bin=1012456",
+    createdAt: "2025-09-15T00:00:00Z", updatedAt: "2025-09-15T00:00:00Z",
+  },
+  {
+    id: "pmt-6", jobsiteId: "job-2", source: "NYC_OPEN_DATA", permitNumber: "PW1-121598712-03",
+    workType: "NB", permitType: "ELEVATOR",
+    status: "IN_PROGRESS", issueDate: undefined, expirationDate: undefined,
+    description: "Elevator installation - 3 passenger elevators",
+    rawLocation: "500 W 33rd St, Manhattan",
+    createdAt: "2026-01-10T00:00:00Z", updatedAt: "2026-01-10T00:00:00Z",
+  },
+  {
+    id: "pmt-7", jobsiteId: "job-4", source: "DOB_NOW", permitNumber: "PW1-421789012-01",
+    jobFilingNumber: "B00765432", workType: "NB", permitType: "BUILDING",
+    status: "ISSUED", issueDate: "2025-01-12", expirationDate: "2027-01-12",
+    description: "New building construction - 35-story commercial office tower",
+    rawLocation: "29-11 Queens Plaza N, Queens",
+    externalUrl: "https://a810-dobnow.nyc.gov/publish/#!/jobs?bin=4004523",
+    createdAt: "2025-01-12T00:00:00Z", updatedAt: "2025-01-12T00:00:00Z",
+  },
+  {
+    id: "pmt-8", jobsiteId: "job-4", source: "DOB_NOW", permitNumber: "PW1-421789012-02",
+    workType: "NB", permitType: "FOUNDATION",
+    status: "EXPIRED", issueDate: "2024-06-01", expirationDate: "2025-06-01",
+    description: "Foundation and excavation work",
+    rawLocation: "29-11 Queens Plaza N, Queens",
+    createdAt: "2024-06-01T00:00:00Z", updatedAt: "2025-06-02T00:00:00Z",
+  },
+  {
+    id: "pmt-9", jobsiteId: "job-6", source: "DOB_NOW", permitNumber: "PW1-221567890-01",
+    workType: "DEM", permitType: "DEMOLITION",
+    status: "ISSUED", issueDate: "2025-10-01", expirationDate: "2026-10-01",
+    description: "Full demolition of existing 6-story medical center building",
+    rawLocation: "1400 Pelham Pkwy S, Bronx",
+    externalUrl: "https://a810-dobnow.nyc.gov/publish/#!/jobs?bin=2045678",
+    createdAt: "2025-10-01T00:00:00Z", updatedAt: "2025-10-01T00:00:00Z",
+  },
+];
+
+export const mockExternalEvents: JobsiteExternalEvent[] = [
+  {
+    id: "evt-1", jobsiteId: "job-1", source: "DOB_COMPLAINT",
+    eventType: "Complaint", externalId: "CMP-8876543",
+    status: "OPEN", category: "NOISE - CONSTRUCTION BEFORE/AFTER HOURS",
+    description: "Complaint received regarding construction noise before 7:00 AM on weekdays.",
+    issuedDate: "2026-02-20", lastUpdatedDate: "2026-02-20",
+    rawLocation: "1 Vanderbilt Ave, Manhattan",
+    externalUrl: "https://a810-bisweb.nyc.gov/bisweb/ComplaintsByAddressServlet?bin=1015862",
+    isNew: true,
+    createdAt: "2026-02-20T00:00:00Z",
+  },
+  {
+    id: "evt-2", jobsiteId: "job-1", source: "DOB_ECB_VIOLATION",
+    eventType: "Violation", externalId: "ECB-34567890",
+    status: "OPEN", category: "FAILURE TO SAFEGUARD PERSONS/PROPERTY",
+    description: "Violation issued for inadequate sidewalk shed maintenance. Missing lighting in sections near main entrance.",
+    issuedDate: "2026-02-18", lastUpdatedDate: "2026-02-22",
+    rawLocation: "1 Vanderbilt Ave, Manhattan",
+    externalUrl: "https://a810-bisweb.nyc.gov/bisweb/ECBQueryByLocationServlet?bin=1015862",
+    isNew: true,
+    createdAt: "2026-02-18T00:00:00Z",
+  },
+  {
+    id: "evt-3", jobsiteId: "job-1", source: "DOB_COMPLAINT",
+    eventType: "Complaint", externalId: "CMP-8876201",
+    status: "RESOLVED", category: "ILLEGAL WORK - NO PERMIT",
+    description: "Investigation completed - all permits verified on file. No violation issued.",
+    issuedDate: "2025-12-05", lastUpdatedDate: "2026-01-15",
+    rawLocation: "1 Vanderbilt Ave, Manhattan",
+    isNew: false,
+    createdAt: "2025-12-05T00:00:00Z",
+  },
+  {
+    id: "evt-4", jobsiteId: "job-2", source: "DOB_ECB_VIOLATION",
+    eventType: "Violation", externalId: "ECB-34567234",
+    status: "OPEN", category: "WORK WITHOUT PERMIT",
+    description: "Violation for performing electrical work beyond scope of current permit.",
+    issuedDate: "2026-02-10", lastUpdatedDate: "2026-02-10",
+    rawLocation: "500 W 33rd St, Manhattan",
+    externalUrl: "https://a810-bisweb.nyc.gov/bisweb/ECBQueryByLocationServlet?bin=1012456",
+    isNew: true,
+    createdAt: "2026-02-10T00:00:00Z",
+  },
+  {
+    id: "evt-5", jobsiteId: "job-2", source: "DOB_COMPLAINT",
+    eventType: "Complaint", externalId: "CMP-8875980",
+    status: "OPEN", category: "UNSAFE CONDITIONS",
+    description: "Complaint about debris falling from upper floors near pedestrian walkway.",
+    issuedDate: "2026-02-15", lastUpdatedDate: "2026-02-16",
+    rawLocation: "500 W 33rd St, Manhattan",
+    isNew: false,
+    createdAt: "2026-02-15T00:00:00Z",
+  },
+  {
+    id: "evt-6", jobsiteId: "job-4", source: "DOB_ECB_VIOLATION",
+    eventType: "Violation", externalId: "ECB-34566789",
+    status: "RESOLVED", category: "FAILURE TO MAINTAIN",
+    description: "Construction fence not maintained. Resolved after repair.",
+    issuedDate: "2025-11-20", lastUpdatedDate: "2025-12-10",
+    rawLocation: "29-11 Queens Plaza N, Queens",
+    isNew: false,
+    createdAt: "2025-11-20T00:00:00Z",
+  },
+  {
+    id: "evt-7", jobsiteId: "job-6", source: "DOB_COMPLAINT",
+    eventType: "Complaint", externalId: "CMP-8876100",
+    status: "OPEN", category: "DUST/DEBRIS - DEMOLITION",
+    description: "Excessive dust from demolition operations affecting neighboring residential buildings.",
+    issuedDate: "2026-02-22", lastUpdatedDate: "2026-02-23",
+    rawLocation: "1400 Pelham Pkwy S, Bronx",
+    isNew: true,
+    createdAt: "2026-02-22T00:00:00Z",
   },
 ];

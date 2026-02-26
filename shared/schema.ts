@@ -40,6 +40,7 @@ export interface Jobsite {
   hasHoist: boolean;
   hasCrane: boolean;
   hasExcavation: boolean;
+  monitorPublicRecords: boolean;
 }
 
 export interface CodeReference {
@@ -71,6 +72,13 @@ export interface Inspection {
   status: "Draft" | "Submitted";
 }
 
+export interface AiFinding {
+  id: string;
+  label: string;
+  confidence: number;
+  suggestedCodeReferenceIds: string[];
+}
+
 export interface Observation {
   id: string;
   organizationId: string;
@@ -88,6 +96,43 @@ export interface Observation {
   photoUrls: string[];
   linkedCodeReferenceIds: string[];
   recommendedActions: string[];
+  source: "manual" | "ai";
+  aiFindings?: AiFinding[];
+}
+
+export interface JobsitePermit {
+  id: string;
+  jobsiteId: string;
+  source: "DOB_NOW" | "BIS" | "NYC_OPEN_DATA";
+  permitNumber: string;
+  jobFilingNumber?: string;
+  workType: string;
+  permitType?: string;
+  status: "ISSUED" | "EXPIRED" | "REVOKED" | "IN_PROGRESS" | "OTHER";
+  issueDate?: string;
+  expirationDate?: string;
+  description?: string;
+  rawLocation?: string;
+  externalUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JobsiteExternalEvent {
+  id: string;
+  jobsiteId: string;
+  source: "DOB_COMPLAINT" | "DOB_ECB_VIOLATION" | "OTHER";
+  eventType: "Complaint" | "Violation";
+  externalId: string;
+  status: string;
+  category?: string;
+  description?: string;
+  issuedDate?: string;
+  lastUpdatedDate?: string;
+  rawLocation?: string;
+  externalUrl?: string;
+  isNew?: boolean;
+  createdAt: string;
 }
 
 export const insertClientSchema = z.object({
@@ -112,6 +157,7 @@ export const insertJobsiteSchema = z.object({
   hasHoist: z.boolean().default(false),
   hasCrane: z.boolean().default(false),
   hasExcavation: z.boolean().default(false),
+  monitorPublicRecords: z.boolean().default(false),
 });
 
 export const insertInspectionSchema = z.object({
@@ -133,6 +179,13 @@ export const insertObservationSchema = z.object({
   photoUrls: z.array(z.string()).default([]),
   linkedCodeReferenceIds: z.array(z.string()).default([]),
   recommendedActions: z.array(z.string()).default([]),
+  source: z.enum(["manual", "ai"]).default("manual"),
+  aiFindings: z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+    confidence: z.number(),
+    suggestedCodeReferenceIds: z.array(z.string()),
+  })).optional(),
 });
 
 export type InsertClient = z.infer<typeof insertClientSchema>;
