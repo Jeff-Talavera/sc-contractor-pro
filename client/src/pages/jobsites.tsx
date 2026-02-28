@@ -1,19 +1,26 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, Link } from "wouter";
+import { useRoute, useLocation, Link } from "wouter";
 import type { Client, Jobsite, Inspection, InspectionTemplate, User, JobsitePermit, JobsiteExternalEvent } from "@shared/schema";
+import { insertJobsiteSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
-  ArrowLeft, Search, Building2, ExternalLink,
+  ArrowLeft, Search, Building2, ExternalLink, Plus,
   MapPin, Hash, FileText, Layers, Container,
   Shield, HardHat, ArrowUp, AlertTriangle, Bell, BellOff,
 } from "lucide-react";
@@ -264,8 +271,229 @@ function ComplaintsViolationsTab({ jobsiteId }: { jobsiteId: string }) {
   );
 }
 
+const boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"];
+const projectTypes = ["NB", "ALT", "DEM", "FO"];
+
+function AddJobsiteForm({ preselectedClientId, onClose }: { preselectedClientId?: string; onClose: () => void }) {
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const { data: clients } = useQuery<Client[]>({ queryKey: ["/api/clients"] });
+
+  const form = useForm({
+    resolver: zodResolver(insertJobsiteSchema),
+    defaultValues: {
+      clientId: preselectedClientId ?? "",
+      name: "",
+      address: "",
+      borough: "Manhattan",
+      bin: "",
+      dobJobNumber: "",
+      projectType: "NB",
+      buildingType: "",
+      stories: undefined as number | undefined,
+      hasScaffold: false,
+      hasHoist: false,
+      hasCrane: false,
+      hasExcavation: false,
+      monitorPublicRecords: false,
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const payload = { ...data, stories: data.stories ? Number(data.stories) : undefined };
+      const res = await apiRequest("POST", "/api/jobsites", payload);
+      return res.json();
+    },
+    onSuccess: (data: Jobsite) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobsites"] });
+      if (preselectedClientId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/clients", preselectedClientId, "jobsites"] });
+      }
+      form.reset();
+      onClose();
+      toast({ title: "Jobsite created" });
+      setLocation(`/jobsites/${data.id}`);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>New Jobsite</DialogTitle>
+      </DialogHeader>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit((d) => createMutation.mutate(d))} className="space-y-4">
+          {!preselectedClientId && (
+            <FormField control={form.control} name="clientId" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Client</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-jobsite-client">
+                      <SelectValue placeholder="Select a client" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {clients?.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+          )}
+
+          <FormField control={form.control} name="name" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Jobsite Name</FormLabel>
+              <FormControl><Input placeholder="e.g., One Vanderbilt Phase 2" {...field} data-testid="input-jobsite-name" /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField control={form.control} name="address" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Address</FormLabel>
+                <FormControl><Input placeholder="e.g., 1 Vanderbilt Ave" {...field} data-testid="input-jobsite-address" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="borough" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Borough</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-jobsite-borough">
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {boroughs.map(b => (
+                      <SelectItem key={b} value={b}>{b}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <FormField control={form.control} name="bin" render={({ field }) => (
+              <FormItem>
+                <FormLabel>BIN</FormLabel>
+                <FormControl><Input placeholder="e.g., 1015862" {...field} data-testid="input-jobsite-bin" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="dobJobNumber" render={({ field }) => (
+              <FormItem>
+                <FormLabel>DOB Job #</FormLabel>
+                <FormControl><Input placeholder="e.g., 121587643" {...field} data-testid="input-jobsite-dob" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="projectType" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Project Type</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-jobsite-project-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {projectTypes.map(pt => (
+                      <SelectItem key={pt} value={pt}>{pt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField control={form.control} name="buildingType" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Building Type (optional)</FormLabel>
+                <FormControl><Input placeholder="e.g., Commercial, Residential" {...field} data-testid="input-jobsite-building-type" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="stories" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Stories (optional)</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 42"
+                    value={field.value ?? ""}
+                    onChange={e => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                    data-testid="input-jobsite-stories"
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+          </div>
+
+          <div>
+            <p className="text-sm font-medium mb-3">Site Flags</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <FormField control={form.control} name="hasScaffold" render={({ field }) => (
+                <FormItem className="flex items-center gap-2 space-y-0">
+                  <FormControl>
+                    <Checkbox checked={field.value} onCheckedChange={field.onChange} data-testid="checkbox-scaffold" />
+                  </FormControl>
+                  <FormLabel className="text-sm font-normal">Scaffold</FormLabel>
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="hasHoist" render={({ field }) => (
+                <FormItem className="flex items-center gap-2 space-y-0">
+                  <FormControl>
+                    <Checkbox checked={field.value} onCheckedChange={field.onChange} data-testid="checkbox-hoist" />
+                  </FormControl>
+                  <FormLabel className="text-sm font-normal">Hoist</FormLabel>
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="hasCrane" render={({ field }) => (
+                <FormItem className="flex items-center gap-2 space-y-0">
+                  <FormControl>
+                    <Checkbox checked={field.value} onCheckedChange={field.onChange} data-testid="checkbox-crane" />
+                  </FormControl>
+                  <FormLabel className="text-sm font-normal">Crane</FormLabel>
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="hasExcavation" render={({ field }) => (
+                <FormItem className="flex items-center gap-2 space-y-0">
+                  <FormControl>
+                    <Checkbox checked={field.value} onCheckedChange={field.onChange} data-testid="checkbox-excavation" />
+                  </FormControl>
+                  <FormLabel className="text-sm font-normal">Excavation</FormLabel>
+                </FormItem>
+              )} />
+            </div>
+          </div>
+
+          <Button type="submit" className="w-full" disabled={createMutation.isPending} data-testid="button-submit-jobsite">
+            {createMutation.isPending ? "Creating..." : "Create Jobsite"}
+          </Button>
+        </form>
+      </Form>
+    </DialogContent>
+  );
+}
+
 function JobsitesList() {
   const [search, setSearch] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
   const { data: jobsites, isLoading } = useQuery<Jobsite[]>({ queryKey: ["/api/jobsites"] });
   const { data: clients } = useQuery<Client[]>({ queryKey: ["/api/clients"] });
 
@@ -282,9 +510,17 @@ function JobsitesList() {
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-5xl mx-auto space-y-6">
-          <div>
-            <h1 className="text-2xl font-semibold" data-testid="text-jobsites-title">Jobsites</h1>
-            <p className="text-sm text-muted-foreground mt-1">All active construction sites</p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold" data-testid="text-jobsites-title">Jobsites</h1>
+              <p className="text-sm text-muted-foreground mt-1">All active construction sites</p>
+            </div>
+            <Dialog open={showAdd} onOpenChange={setShowAdd}>
+              <Button onClick={() => setShowAdd(true)} data-testid="button-add-jobsite">
+                <Plus className="h-4 w-4 mr-2" /> Add Jobsite
+              </Button>
+              {showAdd && <AddJobsiteForm onClose={() => setShowAdd(false)} />}
+            </Dialog>
           </div>
 
           <div className="relative">
