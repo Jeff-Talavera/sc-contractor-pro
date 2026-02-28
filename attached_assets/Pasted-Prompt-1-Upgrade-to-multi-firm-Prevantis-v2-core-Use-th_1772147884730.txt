@@ -1,0 +1,297 @@
+Prompt 1 – Upgrade to multi‑firm “Prevantis v2” core
+Use this first if your project is still close to the original scaffold.
+
+Prompt 1 (Core multi‑firm, inspections, code guidance, time, credentials)
+
+You are upgrading my existing React/Next.js web app called Prevantis, built in Replit. It is for small construction safety firms (2–10 inspectors) doing NYC DOB/OSHA compliance.
+
+The app must support multiple organizations, each with multiple users:
+
+Organization = safety firm.
+
+User belongs to exactly one Organization and has a role: "Owner" | "Admin" | "Inspector".
+
+All data is scoped by organizationId.
+
+1. Confirm / create core data models
+Create or refine TypeScript types/interfaces and in‑memory/mock data for:
+
+Organizations & Users
+
+Organization: id, name, logoUrl?.
+
+User: id, organizationId, name, email, role.
+
+Create a simple currentUser mock (one Owner, one Admin, one Inspector) instead of real auth, but structure code so auth can be added later.
+
+Clients & Jobsites
+
+Client:
+
+id, organizationId, name, contactName, contactEmail, contactPhone, notes?.
+
+Jobsite:
+
+id, organizationId, clientId.
+
+name.
+
+address, borough, bin?, dobJobNumber?.
+
+projectType (e.g., "NB", "ALT", "DEM").
+
+stories (number).
+
+Boolean flags: hasScaffold, hasHoist, hasCrane, hasExcavation.
+
+monitorPublicRecords: boolean (for permits/complaints/violations).
+
+Code references (NYC Chapter 33 + Admin Code metadata)
+
+CodeReference:
+
+id: e.g., "BC 3301.2", "AC 28-301.1".
+
+codeType: "BC" | "AC".
+
+chapter?: number (33 for Ch. 33, undefined for Admin Code).
+
+sectionNumber: string.
+
+title: short plain‑English heading.
+
+plainSummary: 2–3 sentences of dummy, plain‑English explanation.
+
+tags: string[] (e.g., ["fall protection", "scaffolds", "public protection"]).
+
+officialUrl: placeholder URL pointing to official code text online.
+
+IMPORTANT: Do NOT include full verbatim code text. Only dummy summaries and metadata.
+
+Seed at least 20 entries across Ch. 33 topics (scaffolds, hoists, cranes, excavations, housekeeping, public protection, logs) plus a few Admin Code sections.
+
+Inspection templates, inspections, and observations
+
+InspectionTemplate:
+
+id, organizationId, name, description, category.
+
+Inspection:
+
+id, organizationId, jobsiteId, templateId.
+
+date, inspectorUserId.
+
+status: "Draft" | "Submitted".
+
+AiFinding:
+
+id, label, confidence, suggestedCodeReferenceIds: string[].
+
+Observation:
+
+id, organizationId, inspectionId, jobsiteId.
+
+createdAt, createdByUserId.
+
+location.
+
+description.
+
+category (e.g., "Fall Protection", "Housekeeping", "Public Protection", "Administrative").
+
+severity: "Low" | "Medium" | "High".
+
+status: "Open" | "In progress" | "Corrected" | "Verified".
+
+assignedTo?, dueDate?.
+
+photoUrls: string[].
+
+linkedCodeReferenceIds: string[].
+
+recommendedActions: string[].
+
+source: "manual" | "ai".
+
+aiFindings?: AiFinding[].
+
+Time entries and credentials (basic v2)
+
+TimeEntry:
+
+id, organizationId, userId, clientId?, jobsiteId?.
+
+date.
+
+hours (number).
+
+activity: string (e.g., "Site visit", "Travel", "Report writing").
+
+Credential:
+
+id, organizationId.
+
+ownerType: "user" | "organization".
+
+ownerId: userId or organizationId.
+
+type: e.g., "DOB License", "OSHA 30", "Insurance".
+
+name.
+
+credentialNumber? / policyNumber?.
+
+issuer.
+
+issueDate?, expirationDate?.
+
+status: computed in UI as Active / Expiring soon / Expired.
+
+documentUrl? (mock).
+
+Keep all mock data in clearly named files (e.g., mockOrganizations.ts, mockUsers.ts, mockClients.ts, mockJobsites.ts, mockCodeReferences.ts, mockInspectionTemplates.ts, mockInspections.ts, mockObservations.ts, mockTimeEntries.ts, mockCredentials.ts).
+
+2. UI structure and navigation
+Create a responsive layout (desktop + mobile) with a main nav that includes:
+
+Dashboard (placeholder summary with counts: jobsites, open observations, expiring credentials).
+
+Clients.
+
+Jobsites.
+
+Inspections.
+
+Code Library.
+
+Time.
+
+Credentials.
+
+Settings (placeholder for org settings).
+
+Make sure everything respects the current organizationId.
+
+3. Clients & Jobsites UI
+Clients page:
+
+List all clients for current org in a table.
+
+Click row → Client detail: show info + list of jobsites.
+
+Add basic “New client” form.
+
+Jobsites page:
+
+List jobsites with columns: client, jobsite name, borough, projectType, flags.
+
+Click → Jobsite Detail:
+
+Show jobsite profile.
+
+Buttons to open:
+
+“Open in DOB NOW” (placeholder URL using address/BIN).
+
+“Open in BIS” (placeholder URL using address/BIN).
+
+Sections for:
+
+Recent inspections.
+
+Public Records (to be wired in next prompt).
+
+4. Inspections & Observations UI
+Inspections page:
+
+List inspections with: date, jobsite, template, inspector, status.
+
+“New Inspection” flow:
+
+Step 1: select jobsite.
+
+Step 2: select template.
+
+Step 3: create Inspection and navigate to detail.
+
+Inspection detail:
+
+Header with jobsite, template, date, inspector, status (editable).
+
+Observations section:
+
+List observations with status, severity, category, and an indicator if source === "ai".
+
+“Add Observation” form:
+
+Fields for location, description, category, severity, status, assignedTo, dueDate.
+
+File input for photo (for now: accept a URL or simple file upload with mock handling).
+
+Ability to edit observation status, severity, etc.
+
+Code‑linking in Observation edit:
+
+Include a code search input that filters CodeReference by keyword (title, summary, tags).
+
+List matches; clicking “Link” adds the CodeReference.id to linkedCodeReferenceIds.
+
+Display linked references as chips (e.g., “BC 3301.2”) with a tooltip or popup showing the title or a short snippet.
+
+5. Time tracking & credentials UI (basic)
+Time page:
+
+Simple table of TimeEntry for current user, with filters by date and client/jobsite.
+
+“Add Time Entry” form: date, hours, activity, client, jobsite.
+
+Button to “Export CSV” that downloads current filtered entries.
+
+Credentials page:
+
+Two views:
+
+“My credentials”: credentials where ownerType=user and ownerId=currentUser.
+
+“Organization credentials”: credentials where ownerType=organization.
+
+Show status (Active/Expiring soon/Expired) based on today’s date and expirationDate (e.g., expiring soon = within 60 days).
+
+Simple form to add/edit credentials.
+
+6. Code Library page
+Search bar filters CodeReference by id, title, summary, tags.
+
+Tag filters (chips/dropdown) for common tags.
+
+List each entry with id, title, tags, truncated summary, and a “View official text online” link.
+
+7. Disclaimer component
+Create a shared Disclaimer component that can be rendered on:
+
+Code Library page.
+
+Observation detail view.
+
+Possibly footer.
+
+Use placeholder text like:
+
+“Prevantis provides general safety and compliance guidance for informational purposes only and does not constitute legal advice or an official interpretation of any law or regulation. Users remain responsible for consulting current official code texts and qualified professionals. No warranties are made regarding completeness or accuracy.”
+
+8. Developer notes
+After implementing:
+
+Explain in comments or a short markdown file:
+
+Where each mock data file lives.
+
+How to add/edit CodeReferences, InspectionTemplates, and Credentials.
+
+Which component is the main layout and nav.
+
+Ensure the app runs in Replit with a single npm run dev (or equivalent) command.
+
+Focus on a clean, working v2 core with mocked data only, ready for further feature prompts.
+
