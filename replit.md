@@ -44,6 +44,24 @@ Multi-firm construction safety application for NYC-based safety firms (2-10 insp
 - Mock analyzer: `POST /api/ai/analyze-photo` in `server/routes.ts` (replace with real AI API later)
 - AI disclaimer shown in dialog: "AI suggestions are for guidance only..."
 
+### Photo Annotation
+- `client/src/components/photo-annotator.tsx` — Fabric.js canvas annotator
+- Drawing tools: Arrow, Line, Rectangle, Circle, Freehand draw
+- Color picker: Red (default), Yellow, Blue, White, Black
+- Undo/Redo/Clear and Save functionality
+- Integrated in both Photo AI dialog (annotate before AI analysis) and manual Add Observation form
+- Annotated photos saved as data URLs to `observation.photoUrls`
+
+### Code Reference Keyword Chips
+- Clickable keyword chips above the code reference search input
+- Keywords: fall protection, scaffolds, cranes, excavations, housekeeping, public protection, permits, demolition, hoists, rigging
+- Clicking a chip fills the search box and filters results; clicking again clears
+
+### Observation Export (PDF)
+- `client/src/lib/export-observation.ts` — PDF generator using jsPDF
+- "Export PDF" button on each observation card
+- PDF includes: SafeSite header, observation details, description, recommended actions, linked code references (ID + title), annotated photos, AI confidence (if applicable)
+
 ### Where to Extend
 - Replace mock AI analyzer: `server/routes.ts` → `/api/ai/analyze-photo` route
 - Replace mock permits/events: `server/mockData.ts` → `mockPermits`, `mockExternalEvents` (or add real API calls to NYC Open Data)

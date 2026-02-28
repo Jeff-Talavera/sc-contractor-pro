@@ -24,11 +24,14 @@ import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Disclaimer } from "@/components/disclaimer";
+import PhotoAnnotator from "@/components/photo-annotator";
+import { exportObservationPDF } from "@/lib/export-observation";
 import {
   ArrowLeft, Plus, Search, ClipboardCheck,
   Calendar, MapPin, User as UserIcon, ChevronRight,
   AlertTriangle, CheckCircle2, Clock, XCircle,
-  Link2, X, Camera, Sparkles, Upload, ImageIcon, Loader2
+  Link2, X, Camera, Sparkles, Upload, ImageIcon, Loader2,
+  Pencil, Download, ZoomIn
 } from "lucide-react";
 
 const severityColors: Record<string, string> = {
@@ -91,16 +94,26 @@ function PhotoAiDialog({
   const [createdIds, setCreatedIds] = useState<string[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [annotatingIndex, setAnnotatingIndex] = useState<number | null>(null);
   const { data: codeRefs } = useQuery<CodeReference[]>({ queryKey: ["/api/code-references"] });
 
   const codeRefMap = new Map(codeRefs?.map(r => [r.id, r]) ?? []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const fileToDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
     const urls: string[] = [];
     for (let i = 0; i < Math.min(files.length, 3); i++) {
-      urls.push(URL.createObjectURL(files[i]));
+      urls.push(await fileToDataUrl(files[i]));
     }
     setPhotoPreviewUrls(urls);
   };
@@ -209,28 +222,53 @@ function PhotoAiDialog({
             />
           </div>
 
-          {photoPreviewUrls.length > 0 && (
+          {photoPreviewUrls.length > 0 && annotatingIndex === null && (
             <div className="flex gap-3 flex-wrap">
               {photoPreviewUrls.map((url, i) => (
-                <div key={i} className="w-24 h-24 rounded-md border overflow-hidden bg-muted">
-                  <img src={url} alt={`Preview ${i + 1}`} className="w-full h-full object-cover" data-testid={`img-preview-${i}`} />
+                <div key={i} className="relative group">
+                  <div className="w-24 h-24 rounded-md border overflow-hidden bg-muted">
+                    <img src={url} alt={`Preview ${i + 1}`} className="w-full h-full object-cover" data-testid={`img-preview-${i}`} />
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="absolute -bottom-2 left-1/2 -translate-x-1/2 h-6 text-[10px] px-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => setAnnotatingIndex(i)}
+                    data-testid={`button-annotate-photo-${i}`}
+                  >
+                    <Pencil className="h-3 w-3 mr-1" /> Mark up
+                  </Button>
                 </div>
               ))}
             </div>
           )}
 
-          <Button
-            className="w-full"
-            disabled={photoPreviewUrls.length === 0 || analyzing}
-            onClick={handleAnalyze}
-            data-testid="button-analyze-photos"
-          >
-            {analyzing ? (
-              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Analyzing...</>
-            ) : (
-              <><Sparkles className="h-4 w-4 mr-2" /> Analyze Photos</>
-            )}
-          </Button>
+          {annotatingIndex !== null && (
+            <PhotoAnnotator
+              imageUrl={photoPreviewUrls[annotatingIndex]}
+              onSave={(dataUrl) => {
+                setPhotoPreviewUrls(prev => prev.map((u, i) => i === annotatingIndex ? dataUrl : u));
+                setAnnotatingIndex(null);
+                toast({ title: `Photo ${annotatingIndex + 1} annotated` });
+              }}
+              onCancel={() => setAnnotatingIndex(null)}
+            />
+          )}
+
+          {annotatingIndex === null && (
+            <Button
+              className="w-full"
+              disabled={photoPreviewUrls.length === 0 || analyzing}
+              onClick={handleAnalyze}
+              data-testid="button-analyze-photos"
+            >
+              {analyzing ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Analyzing...</>
+              ) : (
+                <><Sparkles className="h-4 w-4 mr-2" /> Analyze Photos</>
+              )}
+            </Button>
+          )}
         </div>
       )}
 
@@ -471,6 +509,19 @@ function NewInspectionWizard({ onClose }: { onClose: () => void }) {
   );
 }
 
+const CODE_KEYWORD_CHIPS = [
+  "fall protection",
+  "scaffolds",
+  "cranes",
+  "excavations",
+  "housekeeping",
+  "public protection",
+  "permits",
+  "demolition",
+  "hoists",
+  "rigging",
+];
+
 function CodeReferenceSearch({
   linkedIds,
   onLink,
@@ -481,7 +532,25 @@ function CodeReferenceSearch({
   onUnlink: (id: string) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [activeKeyword, setActiveKeyword] = useState<string | null>(null);
   const { data: codeRefs } = useQuery<CodeReference[]>({ queryKey: ["/api/code-references"] });
+
+  const handleKeywordClick = (keyword: string) => {
+    if (activeKeyword === keyword) {
+      setActiveKeyword(null);
+      setSearch("");
+    } else {
+      setActiveKeyword(keyword);
+      setSearch(keyword);
+    }
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (activeKeyword && value.toLowerCase() !== activeKeyword.toLowerCase()) {
+      setActiveKeyword(null);
+    }
+  };
 
   const filtered = search.length >= 2
     ? codeRefs?.filter(cr => {
@@ -521,12 +590,26 @@ function CodeReferenceSearch({
         })}
       </div>
 
+      <div className="flex flex-wrap gap-1.5">
+        {CODE_KEYWORD_CHIPS.map(keyword => (
+          <Badge
+            key={keyword}
+            variant={activeKeyword === keyword ? "default" : "outline"}
+            className="cursor-pointer capitalize"
+            onClick={() => handleKeywordClick(keyword)}
+            data-testid={`chip-keyword-${keyword.replace(/\s+/g, "-")}`}
+          >
+            {keyword}
+          </Badge>
+        ))}
+      </div>
+
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Search code references by keyword or tag..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => handleSearchChange(e.target.value)}
           className="pl-9"
           data-testid="input-search-code-refs"
         />
@@ -577,6 +660,9 @@ function AddObservationForm({
 }) {
   const { toast } = useToast();
   const [linkedRefs, setLinkedRefs] = useState<string[]>([]);
+  const [manualPhotos, setManualPhotos] = useState<string[]>([]);
+  const [annotatingManualIdx, setAnnotatingManualIdx] = useState<number | null>(null);
+  const manualFileRef = useRef<HTMLInputElement>(null);
 
   const observationFormSchema = insertObservationSchema.extend({
     recommendedAction: z.string().optional(),
@@ -608,6 +694,7 @@ function AddObservationForm({
       const actions = recommendedAction ? [...rest.recommendedActions, recommendedAction] : rest.recommendedActions;
       const res = await apiRequest("POST", "/api/observations", {
         ...rest,
+        photoUrls: manualPhotos,
         linkedCodeReferenceIds: linkedRefs,
         recommendedActions: actions,
       });
@@ -715,6 +802,70 @@ function AddObservationForm({
           )} />
 
           <div>
+            <p className="text-sm font-medium mb-2">Photos</p>
+            {annotatingManualIdx !== null ? (
+              <PhotoAnnotator
+                imageUrl={manualPhotos[annotatingManualIdx]}
+                onSave={(dataUrl) => {
+                  setManualPhotos(prev => prev.map((u, i) => i === annotatingManualIdx ? dataUrl : u));
+                  setAnnotatingManualIdx(null);
+                  toast({ title: "Photo annotated" });
+                }}
+                onCancel={() => setAnnotatingManualIdx(null)}
+              />
+            ) : (
+              <>
+                <div className="flex gap-2 flex-wrap mb-2">
+                  {manualPhotos.map((url, i) => (
+                    <div key={i} className="relative group">
+                      <div className="w-20 h-20 rounded-md border overflow-hidden bg-muted">
+                        <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" data-testid={`img-manual-photo-${i}`} />
+                      </div>
+                      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="secondary" size="sm" className="h-5 text-[9px] px-1.5" onClick={() => setAnnotatingManualIdx(i)} data-testid={`button-annotate-manual-${i}`}>
+                          <Pencil className="h-2.5 w-2.5 mr-0.5" /> Mark up
+                        </Button>
+                        <Button variant="secondary" size="sm" className="h-5 text-[9px] px-1" onClick={() => setManualPhotos(prev => prev.filter((_, j) => j !== i))} data-testid={`button-remove-manual-photo-${i}`}>
+                          <X className="h-2.5 w-2.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {manualPhotos.length < 3 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => manualFileRef.current?.click()}
+                    data-testid="button-add-manual-photo"
+                  >
+                    <Camera className="h-4 w-4 mr-1" /> Add Photo
+                  </Button>
+                )}
+                <input
+                  ref={manualFileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setManualPhotos(prev => [...prev, reader.result as string]);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                    e.target.value = "";
+                  }}
+                  data-testid="input-manual-photo-file"
+                />
+              </>
+            )}
+          </div>
+
+          <div>
             <p className="text-sm font-medium mb-2">Suggest Code References</p>
             <CodeReferenceSearch
               linkedIds={linkedRefs}
@@ -737,6 +888,7 @@ function AddObservationForm({
 function InspectionDetail({ id }: { id: string }) {
   const [showAddObs, setShowAddObs] = useState(false);
   const [showAiDialog, setShowAiDialog] = useState(false);
+  const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null);
   const { toast } = useToast();
 
   const { data: inspection, isLoading } = useQuery<Inspection>({
@@ -932,6 +1084,24 @@ function InspectionDetail({ id }: { id: string }) {
                         </div>
                       )}
 
+                      {obs.photoUrls && obs.photoUrls.length > 0 && (
+                        <div className="flex gap-2 flex-wrap">
+                          {obs.photoUrls.map((url, pi) => (
+                            <div
+                              key={pi}
+                              className="w-16 h-16 rounded-md border overflow-hidden bg-muted cursor-pointer relative group"
+                              onClick={() => setEnlargedPhoto(url)}
+                              data-testid={`img-obs-photo-${obs.id}-${pi}`}
+                            >
+                              <img src={url} alt={`Photo ${pi + 1}`} className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <ZoomIn className="h-4 w-4 text-white" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {obs.linkedCodeReferenceIds.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
                           {obs.linkedCodeReferenceIds.map(refId => {
@@ -965,6 +1135,15 @@ function InspectionDetail({ id }: { id: string }) {
                             AI confidence: {Math.round(obs.aiFindings[0].confidence * 100)}%
                           </span>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs px-2 ml-auto"
+                          onClick={() => exportObservationPDF(obs, codeRefMap, jobsite?.name, inspection.date)}
+                          data-testid={`button-export-obs-${obs.id}`}
+                        >
+                          <Download className="h-3 w-3 mr-1" /> Export PDF
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -972,6 +1151,17 @@ function InspectionDetail({ id }: { id: string }) {
               })}
             </div>
           )}
+
+          <Dialog open={!!enlargedPhoto} onOpenChange={() => setEnlargedPhoto(null)}>
+            <DialogContent className="sm:max-w-3xl p-2">
+              <DialogHeader>
+                <DialogTitle>Photo</DialogTitle>
+              </DialogHeader>
+              {enlargedPhoto && (
+                <img src={enlargedPhoto} alt="Enlarged photo" className="w-full rounded-md" data-testid="img-enlarged-photo" />
+              )}
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </div>
