@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   BookOpen,
   HardHat,
+  UserCog,
 } from "lucide-react";
 import {
   Sidebar,
@@ -27,6 +28,7 @@ const navItems = [
   { title: "Jobsites", url: "/jobsites", icon: Building2 },
   { title: "Inspections", url: "/inspections", icon: ClipboardCheck },
   { title: "Code Library", url: "/code-library", icon: BookOpen },
+  { title: "Workforce", url: "/workforce", icon: UserCog },
 ];
 
 export function AppSidebar() {

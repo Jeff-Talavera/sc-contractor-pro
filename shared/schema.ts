@@ -188,7 +188,99 @@ export const insertObservationSchema = z.object({
   })).optional(),
 });
 
+export interface EmployeeProfile {
+  id: string;
+  organizationId: string;
+  userId: string;
+  title: string;
+  phone: string;
+  hireDate: string;
+  status: "Active" | "Inactive" | "On Leave";
+  certifications: string[];
+  licenseNumbers: Record<string, string>;
+  emergencyContact?: string;
+  emergencyPhone?: string;
+  hourlyRate?: number;
+  notes?: string;
+}
+
+export interface ScheduleEntry {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  jobsiteId: string;
+  date: string;
+  shiftStart?: string;
+  shiftEnd?: string;
+  status: "Scheduled" | "Confirmed" | "Completed" | "Cancelled";
+  notes?: string;
+}
+
+export interface Timesheet {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  weekStartDate: string;
+  status: "Draft" | "Submitted" | "Approved" | "Rejected";
+  submittedAt?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  totalHours: number;
+  notes?: string;
+}
+
+export interface TimesheetEntry {
+  id: string;
+  timesheetId: string;
+  date: string;
+  jobsiteId: string;
+  hours: number;
+  description?: string;
+}
+
+export const insertEmployeeProfileSchema = z.object({
+  userId: z.string().min(1, "User is required"),
+  title: z.string().min(1, "Title is required"),
+  phone: z.string().min(1, "Phone is required"),
+  hireDate: z.string().min(1, "Hire date is required"),
+  status: z.enum(["Active", "Inactive", "On Leave"]).default("Active"),
+  certifications: z.array(z.string()).default([]),
+  licenseNumbers: z.record(z.string(), z.string()).default({}),
+  emergencyContact: z.string().optional(),
+  emergencyPhone: z.string().optional(),
+  hourlyRate: z.number().optional(),
+  notes: z.string().optional(),
+});
+
+export const insertScheduleEntrySchema = z.object({
+  employeeId: z.string().min(1, "Employee is required"),
+  jobsiteId: z.string().min(1, "Jobsite is required"),
+  date: z.string().min(1, "Date is required"),
+  shiftStart: z.string().optional(),
+  shiftEnd: z.string().optional(),
+  status: z.enum(["Scheduled", "Confirmed", "Completed", "Cancelled"]).default("Scheduled"),
+  notes: z.string().optional(),
+});
+
+export const insertTimesheetSchema = z.object({
+  employeeId: z.string().min(1, "Employee is required"),
+  weekStartDate: z.string().min(1, "Week start date is required"),
+  notes: z.string().optional(),
+});
+
+export const insertTimesheetEntrySchema = z.object({
+  timesheetId: z.string().min(1, "Timesheet is required"),
+  date: z.string().min(1, "Date is required"),
+  jobsiteId: z.string().min(1, "Jobsite is required"),
+  hours: z.number().min(0, "Hours must be non-negative").max(24, "Hours cannot exceed 24"),
+  description: z.string().optional(),
+});
+
 export type InsertClient = z.infer<typeof insertClientSchema>;
 export type InsertJobsite = z.infer<typeof insertJobsiteSchema>;
 export type InsertInspection = z.infer<typeof insertInspectionSchema>;
 export type InsertObservation = z.infer<typeof insertObservationSchema>;
+export type InsertEmployeeProfile = z.infer<typeof insertEmployeeProfileSchema>;
+export type InsertScheduleEntry = z.infer<typeof insertScheduleEntrySchema>;
+export type InsertTimesheet = z.infer<typeof insertTimesheetSchema>;
+export type InsertTimesheetEntry = z.infer<typeof insertTimesheetEntrySchema>;

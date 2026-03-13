@@ -1,7 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertClientSchema, insertJobsiteSchema, insertInspectionSchema, insertObservationSchema } from "@shared/schema";
+import {
+  insertClientSchema, insertJobsiteSchema, insertInspectionSchema, insertObservationSchema,
+  insertEmployeeProfileSchema, insertScheduleEntrySchema, insertTimesheetSchema, insertTimesheetEntrySchema
+} from "@shared/schema";
 import type { AiFinding } from "@shared/schema";
 
 export async function registerRoutes(
@@ -146,6 +149,149 @@ export async function registerRoutes(
 
   app.get("/api/jobsites/:id/external-events", (req, res) => {
     res.json(storage.getExternalEventsByJobsite(req.params.id));
+  });
+
+  app.get("/api/employees", (_req, res) => {
+    const user = storage.getCurrentUser();
+    res.json(storage.getEmployeeProfilesByOrg(user.organizationId));
+  });
+
+  app.get("/api/employees/:id", (req, res) => {
+    const profile = storage.getEmployeeProfile(req.params.id);
+    if (!profile) return res.status(404).json({ message: "Employee not found" });
+    res.json(profile);
+  });
+
+  app.post("/api/employees", (req, res) => {
+    const parsed = insertEmployeeProfileSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const user = storage.getCurrentUser();
+    const profile = storage.createEmployeeProfile(user.organizationId, parsed.data);
+    res.status(201).json(profile);
+  });
+
+  app.patch("/api/employees/:id", (req, res) => {
+    const { title, phone, status, certifications, licenseNumbers, emergencyContact, emergencyPhone, hourlyRate, notes } = req.body;
+    const updates: Record<string, any> = {};
+    if (title !== undefined) updates.title = title;
+    if (phone !== undefined) updates.phone = phone;
+    if (status !== undefined) updates.status = status;
+    if (certifications !== undefined) updates.certifications = certifications;
+    if (licenseNumbers !== undefined) updates.licenseNumbers = licenseNumbers;
+    if (emergencyContact !== undefined) updates.emergencyContact = emergencyContact;
+    if (emergencyPhone !== undefined) updates.emergencyPhone = emergencyPhone;
+    if (hourlyRate !== undefined) updates.hourlyRate = hourlyRate;
+    if (notes !== undefined) updates.notes = notes;
+    const profile = storage.getEmployeeProfile(req.params.id);
+    if (!profile) return res.status(404).json({ message: "Employee not found" });
+    const user = storage.getCurrentUser();
+    if (profile.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
+    const updated = storage.updateEmployeeProfile(req.params.id, updates);
+    res.json(updated);
+  });
+
+  app.get("/api/schedule", (req, res) => {
+    const user = storage.getCurrentUser();
+    const { startDate, endDate } = req.query;
+    if (startDate && endDate) {
+      res.json(storage.getScheduleEntriesByDateRange(user.organizationId, startDate as string, endDate as string));
+    } else {
+      res.json(storage.getScheduleEntriesByOrg(user.organizationId));
+    }
+  });
+
+  app.get("/api/schedule/employee/:employeeId", (req, res) => {
+    res.json(storage.getScheduleEntriesByEmployee(req.params.employeeId));
+  });
+
+  app.post("/api/schedule", (req, res) => {
+    const parsed = insertScheduleEntrySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const user = storage.getCurrentUser();
+    const entry = storage.createScheduleEntry(user.organizationId, parsed.data);
+    res.status(201).json(entry);
+  });
+
+  app.patch("/api/schedule/:id", (req, res) => {
+    const { status, shiftStart, shiftEnd, notes } = req.body;
+    const updates: Record<string, any> = {};
+    if (status !== undefined) updates.status = status;
+    if (shiftStart !== undefined) updates.shiftStart = shiftStart;
+    if (shiftEnd !== undefined) updates.shiftEnd = shiftEnd;
+    if (notes !== undefined) updates.notes = notes;
+    const updated = storage.updateScheduleEntry(req.params.id, updates);
+    if (!updated) return res.status(404).json({ message: "Schedule entry not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/schedule/:id", (req, res) => {
+    const deleted = storage.deleteScheduleEntry(req.params.id);
+    if (!deleted) return res.status(404).json({ message: "Schedule entry not found" });
+    res.json({ success: true });
+  });
+
+  app.get("/api/timesheets", (_req, res) => {
+    const user = storage.getCurrentUser();
+    res.json(storage.getTimesheetsByOrg(user.organizationId));
+  });
+
+  app.get("/api/timesheets/:id", (req, res) => {
+    const ts = storage.getTimesheet(req.params.id);
+    if (!ts) return res.status(404).json({ message: "Timesheet not found" });
+    res.json(ts);
+  });
+
+  app.get("/api/timesheets/employee/:employeeId", (req, res) => {
+    res.json(storage.getTimesheetsByEmployee(req.params.employeeId));
+  });
+
+  app.post("/api/timesheets", (req, res) => {
+    const parsed = insertTimesheetSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const user = storage.getCurrentUser();
+    const ts = storage.createTimesheet(user.organizationId, parsed.data);
+    res.status(201).json(ts);
+  });
+
+  app.patch("/api/timesheets/:id", (req, res) => {
+    const { status, submittedAt, approvedBy, approvedAt, notes } = req.body;
+    const updates: Record<string, any> = {};
+    if (status !== undefined) updates.status = status;
+    if (submittedAt !== undefined) updates.submittedAt = submittedAt;
+    if (approvedBy !== undefined) updates.approvedBy = approvedBy;
+    if (approvedAt !== undefined) updates.approvedAt = approvedAt;
+    if (notes !== undefined) updates.notes = notes;
+    const updated = storage.updateTimesheet(req.params.id, updates);
+    if (!updated) return res.status(404).json({ message: "Timesheet not found" });
+    res.json(updated);
+  });
+
+  app.get("/api/timesheets/:id/entries", (req, res) => {
+    res.json(storage.getTimesheetEntriesByTimesheet(req.params.id));
+  });
+
+  app.post("/api/timesheet-entries", (req, res) => {
+    const parsed = insertTimesheetEntrySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const entry = storage.createTimesheetEntry(parsed.data);
+    res.status(201).json(entry);
+  });
+
+  app.patch("/api/timesheet-entries/:id", (req, res) => {
+    const { hours, description, jobsiteId } = req.body;
+    const updates: Record<string, any> = {};
+    if (hours !== undefined) updates.hours = hours;
+    if (description !== undefined) updates.description = description;
+    if (jobsiteId !== undefined) updates.jobsiteId = jobsiteId;
+    const updated = storage.updateTimesheetEntry(req.params.id, updates);
+    if (!updated) return res.status(404).json({ message: "Timesheet entry not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/timesheet-entries/:id", (req, res) => {
+    const deleted = storage.deleteTimesheetEntry(req.params.id);
+    if (!deleted) return res.status(404).json({ message: "Timesheet entry not found" });
+    res.json({ success: true });
   });
 
   app.post("/api/ai/analyze-photo", (_req, res) => {

@@ -2,14 +2,17 @@ import type {
   Organization, User, Client, Jobsite, CodeReference,
   InspectionTemplate, Inspection, Observation,
   JobsitePermit, JobsiteExternalEvent,
-  InsertClient, InsertJobsite, InsertInspection, InsertObservation
+  EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry,
+  InsertClient, InsertJobsite, InsertInspection, InsertObservation,
+  InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import {
   mockOrganizations, mockUsers, currentUser as mockCurrentUser,
   mockClients, mockJobsites, mockCodeReferences,
   mockInspectionTemplates, mockInspections, mockObservations,
-  mockPermits, mockExternalEvents
+  mockPermits, mockExternalEvents,
+  mockEmployeeProfiles, mockScheduleEntries, mockTimesheets, mockTimesheetEntries
 } from "./mockData";
 
 export interface IStorage {
@@ -48,6 +51,29 @@ export interface IStorage {
 
   getPermitsByJobsite(jobsiteId: string): JobsitePermit[];
   getExternalEventsByJobsite(jobsiteId: string): JobsiteExternalEvent[];
+
+  getEmployeeProfilesByOrg(orgId: string): EmployeeProfile[];
+  getEmployeeProfile(id: string): EmployeeProfile | undefined;
+  createEmployeeProfile(orgId: string, data: InsertEmployeeProfile): EmployeeProfile;
+  updateEmployeeProfile(id: string, updates: Partial<EmployeeProfile>): EmployeeProfile | undefined;
+
+  getScheduleEntriesByOrg(orgId: string): ScheduleEntry[];
+  getScheduleEntriesByEmployee(employeeId: string): ScheduleEntry[];
+  getScheduleEntriesByDateRange(orgId: string, startDate: string, endDate: string): ScheduleEntry[];
+  createScheduleEntry(orgId: string, data: InsertScheduleEntry): ScheduleEntry;
+  updateScheduleEntry(id: string, updates: Partial<ScheduleEntry>): ScheduleEntry | undefined;
+  deleteScheduleEntry(id: string): boolean;
+
+  getTimesheetsByOrg(orgId: string): Timesheet[];
+  getTimesheetsByEmployee(employeeId: string): Timesheet[];
+  getTimesheet(id: string): Timesheet | undefined;
+  createTimesheet(orgId: string, data: InsertTimesheet): Timesheet;
+  updateTimesheet(id: string, updates: Partial<Timesheet>): Timesheet | undefined;
+
+  getTimesheetEntriesByTimesheet(timesheetId: string): TimesheetEntry[];
+  createTimesheetEntry(data: InsertTimesheetEntry): TimesheetEntry;
+  updateTimesheetEntry(id: string, updates: Partial<TimesheetEntry>): TimesheetEntry | undefined;
+  deleteTimesheetEntry(id: string): boolean;
 }
 
 export class MemStorage implements IStorage {
@@ -61,6 +87,10 @@ export class MemStorage implements IStorage {
   private observations: Map<string, Observation>;
   private permits: Map<string, JobsitePermit>;
   private externalEvents: Map<string, JobsiteExternalEvent>;
+  private employeeProfiles: Map<string, EmployeeProfile>;
+  private scheduleEntries: Map<string, ScheduleEntry>;
+  private timesheets: Map<string, Timesheet>;
+  private timesheetEntries: Map<string, TimesheetEntry>;
 
   constructor() {
     this.organizations = new Map(mockOrganizations.map(o => [o.id, o]));
@@ -73,6 +103,10 @@ export class MemStorage implements IStorage {
     this.observations = new Map(mockObservations.map(o => [o.id, o]));
     this.permits = new Map(mockPermits.map(p => [p.id, p]));
     this.externalEvents = new Map(mockExternalEvents.map(e => [e.id, e]));
+    this.employeeProfiles = new Map(mockEmployeeProfiles.map(ep => [ep.id, ep]));
+    this.scheduleEntries = new Map(mockScheduleEntries.map(se => [se.id, se]));
+    this.timesheets = new Map(mockTimesheets.map(ts => [ts.id, ts]));
+    this.timesheetEntries = new Map(mockTimesheetEntries.map(te => [te.id, te]));
   }
 
   getCurrentUser(): User {
@@ -214,6 +248,139 @@ export class MemStorage implements IStorage {
 
   getExternalEventsByJobsite(jobsiteId: string): JobsiteExternalEvent[] {
     return Array.from(this.externalEvents.values()).filter(e => e.jobsiteId === jobsiteId);
+  }
+
+  getEmployeeProfilesByOrg(orgId: string): EmployeeProfile[] {
+    return Array.from(this.employeeProfiles.values()).filter(ep => ep.organizationId === orgId);
+  }
+
+  getEmployeeProfile(id: string): EmployeeProfile | undefined {
+    return this.employeeProfiles.get(id);
+  }
+
+  createEmployeeProfile(orgId: string, data: InsertEmployeeProfile): EmployeeProfile {
+    const profile: EmployeeProfile = {
+      id: `emp-${randomUUID().slice(0, 8)}`,
+      organizationId: orgId,
+      ...data,
+    };
+    this.employeeProfiles.set(profile.id, profile);
+    return profile;
+  }
+
+  updateEmployeeProfile(id: string, updates: Partial<EmployeeProfile>): EmployeeProfile | undefined {
+    const profile = this.employeeProfiles.get(id);
+    if (!profile) return undefined;
+    Object.assign(profile, updates);
+    return profile;
+  }
+
+  getScheduleEntriesByOrg(orgId: string): ScheduleEntry[] {
+    return Array.from(this.scheduleEntries.values()).filter(se => se.organizationId === orgId);
+  }
+
+  getScheduleEntriesByEmployee(employeeId: string): ScheduleEntry[] {
+    return Array.from(this.scheduleEntries.values()).filter(se => se.employeeId === employeeId);
+  }
+
+  getScheduleEntriesByDateRange(orgId: string, startDate: string, endDate: string): ScheduleEntry[] {
+    return Array.from(this.scheduleEntries.values()).filter(se =>
+      se.organizationId === orgId && se.date >= startDate && se.date <= endDate
+    );
+  }
+
+  createScheduleEntry(orgId: string, data: InsertScheduleEntry): ScheduleEntry {
+    const entry: ScheduleEntry = {
+      id: `sched-${randomUUID().slice(0, 8)}`,
+      organizationId: orgId,
+      ...data,
+    };
+    this.scheduleEntries.set(entry.id, entry);
+    return entry;
+  }
+
+  updateScheduleEntry(id: string, updates: Partial<ScheduleEntry>): ScheduleEntry | undefined {
+    const entry = this.scheduleEntries.get(id);
+    if (!entry) return undefined;
+    Object.assign(entry, updates);
+    return entry;
+  }
+
+  deleteScheduleEntry(id: string): boolean {
+    return this.scheduleEntries.delete(id);
+  }
+
+  getTimesheetsByOrg(orgId: string): Timesheet[] {
+    return Array.from(this.timesheets.values()).filter(ts => ts.organizationId === orgId);
+  }
+
+  getTimesheetsByEmployee(employeeId: string): Timesheet[] {
+    return Array.from(this.timesheets.values()).filter(ts => ts.employeeId === employeeId);
+  }
+
+  getTimesheet(id: string): Timesheet | undefined {
+    return this.timesheets.get(id);
+  }
+
+  createTimesheet(orgId: string, data: InsertTimesheet): Timesheet {
+    const timesheet: Timesheet = {
+      id: `ts-${randomUUID().slice(0, 8)}`,
+      organizationId: orgId,
+      status: "Draft",
+      totalHours: 0,
+      ...data,
+    };
+    this.timesheets.set(timesheet.id, timesheet);
+    return timesheet;
+  }
+
+  updateTimesheet(id: string, updates: Partial<Timesheet>): Timesheet | undefined {
+    const ts = this.timesheets.get(id);
+    if (!ts) return undefined;
+    Object.assign(ts, updates);
+    return ts;
+  }
+
+  getTimesheetEntriesByTimesheet(timesheetId: string): TimesheetEntry[] {
+    return Array.from(this.timesheetEntries.values()).filter(te => te.timesheetId === timesheetId);
+  }
+
+  createTimesheetEntry(data: InsertTimesheetEntry): TimesheetEntry {
+    const entry: TimesheetEntry = {
+      id: `tse-${randomUUID().slice(0, 8)}`,
+      ...data,
+    };
+    this.timesheetEntries.set(entry.id, entry);
+    const ts = this.timesheets.get(data.timesheetId);
+    if (ts) {
+      const allEntries = this.getTimesheetEntriesByTimesheet(data.timesheetId);
+      ts.totalHours = allEntries.reduce((sum, e) => sum + e.hours, 0);
+    }
+    return entry;
+  }
+
+  updateTimesheetEntry(id: string, updates: Partial<TimesheetEntry>): TimesheetEntry | undefined {
+    const entry = this.timesheetEntries.get(id);
+    if (!entry) return undefined;
+    Object.assign(entry, updates);
+    const ts = this.timesheets.get(entry.timesheetId);
+    if (ts) {
+      const allEntries = this.getTimesheetEntriesByTimesheet(entry.timesheetId);
+      ts.totalHours = allEntries.reduce((sum, e) => sum + e.hours, 0);
+    }
+    return entry;
+  }
+
+  deleteTimesheetEntry(id: string): boolean {
+    const entry = this.timesheetEntries.get(id);
+    if (!entry) return false;
+    this.timesheetEntries.delete(id);
+    const ts = this.timesheets.get(entry.timesheetId);
+    if (ts) {
+      const allEntries = this.getTimesheetEntriesByTimesheet(entry.timesheetId);
+      ts.totalHours = allEntries.reduce((sum, e) => sum + e.hours, 0);
+    }
+    return true;
   }
 }
 

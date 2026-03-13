@@ -11,6 +11,7 @@ import ClientsPage from "@/pages/clients";
 import JobsitesPage from "@/pages/jobsites";
 import InspectionsPage from "@/pages/inspections";
 import CodeLibraryPage from "@/pages/code-library";
+import WorkforcePage from "@/pages/workforce";
 
 function Router() {
   return (
@@ -23,6 +24,8 @@ function Router() {
       <Route path="/inspections" component={InspectionsPage} />
       <Route path="/inspections/:id" component={InspectionsPage} />
       <Route path="/code-library" component={CodeLibraryPage} />
+      <Route path="/workforce" component={WorkforcePage} />
+      <Route path="/workforce/:id" component={WorkforcePage} />
       <Route component={NotFound} />
     </Switch>
   );

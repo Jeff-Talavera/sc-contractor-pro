@@ -15,7 +15,7 @@ Multi-firm construction safety application for NYC-based safety firms (2-10 insp
 - `server/routes.ts` - All API routes prefixed with /api, including mock AI analysis endpoint
 - `client/src/components/disclaimer.tsx` - Shared disclaimer text component
 - `client/src/components/app-sidebar.tsx` - Navigation sidebar
-- `client/src/pages/` - All page components (dashboard, clients, jobsites, inspections, code-library)
+- `client/src/pages/` - All page components (dashboard, clients, jobsites, inspections, code-library, workforce)
 
 ## Data Models
 - **Organization** + **User** (multi-org, role-based: Owner/Admin/Inspector)
@@ -26,6 +26,10 @@ Multi-firm construction safety application for NYC-based safety firms (2-10 insp
 - **JobsiteExternalEvent** (DOB complaints and ECB violations per jobsite, with isNew flag)
 - **AiFinding** (AI-detected hazard with label, confidence score, and suggested code references)
 - **Observation** extended with `source: "manual"|"ai"` and optional `aiFindings[]` for traceability
+- **EmployeeProfile** (linked to User, with title, phone, certifications, licenseNumbers, hireDate, status, hourlyRate, emergency contact)
+- **ScheduleEntry** (employee-to-jobsite assignment on a date with shift times and status: Scheduled/Confirmed/Completed/Cancelled)
+- **Timesheet** (weekly timesheet per employee with status: Draft/Submitted/Approved/Rejected, totalHours, approval tracking)
+- **TimesheetEntry** (daily line item on a timesheet: date, jobsite, hours, description)
 
 ## Features
 
@@ -61,6 +65,21 @@ Multi-firm construction safety application for NYC-based safety firms (2-10 insp
 - `client/src/lib/export-observation.ts` — PDF generator using jsPDF
 - "Export PDF" button on each observation card
 - PDF includes: SafeSite header, observation details, description, recommended actions, linked code references (ID + title), annotated photos, AI confidence (if applicable)
+
+### Workforce Module
+- **Directory tab**: Searchable employee list with status filter, click-through to employee detail view
+  - Employee detail: contact info, certifications & license numbers, emergency contact, upcoming schedule
+  - Add Employee dialog with user selection, title, phone, certifications (tag input), emergency contact
+- **Schedule tab**: Week-view grid (employees as rows, days as columns) with prev/next week navigation
+  - Colored assignment chips showing jobsite name and shift times
+  - Click chip to advance status (Scheduled → Confirmed → Completed)
+  - Assign dialog: select employee + jobsite + date + shift times + notes
+- **Timesheets tab**: Filterable list by employee and status
+  - Timesheet detail: daily breakdown with add/delete entries, submit/approve/reject actions
+  - New Timesheet dialog: select employee + week start date
+- API routes: `/api/employees`, `/api/schedule`, `/api/timesheets`, `/api/timesheet-entries`
+- Page: `client/src/pages/workforce.tsx`
+- Mock data: `mockEmployeeProfiles`, `mockScheduleEntries`, `mockTimesheets`, `mockTimesheetEntries`
 
 ### Where to Extend
 - Replace mock AI analyzer: `server/routes.ts` → `/api/ai/analyze-photo` route

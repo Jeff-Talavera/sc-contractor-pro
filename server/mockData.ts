@@ -1,7 +1,8 @@
 import type {
   Organization, User, Client, Jobsite, CodeReference,
   InspectionTemplate, Inspection, Observation,
-  JobsitePermit, JobsiteExternalEvent
+  JobsitePermit, JobsiteExternalEvent,
+  EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry
 } from "@shared/schema";
 
 export const mockOrganizations: Organization[] = [
@@ -488,4 +489,120 @@ export const mockExternalEvents: JobsiteExternalEvent[] = [
     isNew: true,
     createdAt: "2026-02-22T00:00:00Z",
   },
+];
+
+export const mockEmployeeProfiles: EmployeeProfile[] = [
+  {
+    id: "emp-1", organizationId: "org-1", userId: "user-1",
+    title: "Site Safety Manager / Owner",
+    phone: "(917) 555-0101", hireDate: "2020-03-15", status: "Active",
+    certifications: ["SST-40", "OSHA-30", "First Aid/CPR", "NYC SSM License"],
+    licenseNumbers: { "SSM": "SSM-2020-4521", "OSHA-30": "OSHA30-NY-11234" },
+    emergencyContact: "Carlos Santos", emergencyPhone: "(917) 555-0199",
+    hourlyRate: 95,
+    notes: "Company owner. Handles key accounts directly.",
+  },
+  {
+    id: "emp-2", organizationId: "org-1", userId: "user-2",
+    title: "Senior Safety Coordinator",
+    phone: "(646) 555-0202", hireDate: "2021-07-01", status: "Active",
+    certifications: ["SST-40", "OSHA-30", "Scaffold Competent Person", "Confined Space"],
+    licenseNumbers: { "SSM": "SSM-2021-7892", "OSHA-30": "OSHA30-NY-22456" },
+    emergencyContact: "Linda Chen", emergencyPhone: "(646) 555-0299",
+    hourlyRate: 75,
+  },
+  {
+    id: "emp-3", organizationId: "org-1", userId: "user-3",
+    title: "Safety Inspector",
+    phone: "(718) 555-0303", hireDate: "2022-01-10", status: "Active",
+    certifications: ["SST-40", "OSHA-10", "First Aid/CPR"],
+    licenseNumbers: { "OSHA-10": "OSHA10-NY-33789" },
+    emergencyContact: "David Johnson", emergencyPhone: "(718) 555-0399",
+    hourlyRate: 55,
+  },
+  {
+    id: "emp-4", organizationId: "org-1", userId: "user-4",
+    title: "Safety Inspector",
+    phone: "(347) 555-0404", hireDate: "2023-04-20", status: "Active",
+    certifications: ["SST-40", "OSHA-10", "Fire Guard"],
+    licenseNumbers: { "OSHA-10": "OSHA10-NY-44123", "Fire Guard": "FG-2023-8901" },
+    emergencyContact: "Anna Kowalski", emergencyPhone: "(347) 555-0499",
+    hourlyRate: 55,
+    notes: "Specializes in demolition and excavation sites.",
+  },
+];
+
+export const mockScheduleEntries: ScheduleEntry[] = [
+  { id: "sched-1", organizationId: "org-1", employeeId: "emp-1", jobsiteId: "job-1", date: "2026-03-09", shiftStart: "07:00", shiftEnd: "15:00", status: "Completed" },
+  { id: "sched-2", organizationId: "org-1", employeeId: "emp-2", jobsiteId: "job-2", date: "2026-03-09", shiftStart: "07:00", shiftEnd: "15:30", status: "Completed" },
+  { id: "sched-3", organizationId: "org-1", employeeId: "emp-3", jobsiteId: "job-3", date: "2026-03-09", shiftStart: "08:00", shiftEnd: "16:00", status: "Completed" },
+  { id: "sched-4", organizationId: "org-1", employeeId: "emp-4", jobsiteId: "job-6", date: "2026-03-09", shiftStart: "07:00", shiftEnd: "15:00", status: "Completed" },
+  { id: "sched-5", organizationId: "org-1", employeeId: "emp-1", jobsiteId: "job-1", date: "2026-03-10", shiftStart: "07:00", shiftEnd: "15:00", status: "Completed" },
+  { id: "sched-6", organizationId: "org-1", employeeId: "emp-2", jobsiteId: "job-4", date: "2026-03-10", shiftStart: "07:00", shiftEnd: "15:30", status: "Completed" },
+  { id: "sched-7", organizationId: "org-1", employeeId: "emp-3", jobsiteId: "job-1", date: "2026-03-10", shiftStart: "08:00", shiftEnd: "16:00", status: "Completed" },
+  { id: "sched-8", organizationId: "org-1", employeeId: "emp-4", jobsiteId: "job-6", date: "2026-03-10", shiftStart: "07:00", shiftEnd: "15:00", status: "Completed" },
+  { id: "sched-9", organizationId: "org-1", employeeId: "emp-1", jobsiteId: "job-5", date: "2026-03-11", shiftStart: "07:00", shiftEnd: "15:00", status: "Confirmed" },
+  { id: "sched-10", organizationId: "org-1", employeeId: "emp-2", jobsiteId: "job-2", date: "2026-03-11", shiftStart: "07:00", shiftEnd: "15:30", status: "Confirmed" },
+  { id: "sched-11", organizationId: "org-1", employeeId: "emp-3", jobsiteId: "job-3", date: "2026-03-11", shiftStart: "08:00", shiftEnd: "16:00", status: "Scheduled" },
+  { id: "sched-12", organizationId: "org-1", employeeId: "emp-4", jobsiteId: "job-4", date: "2026-03-11", shiftStart: "07:00", shiftEnd: "15:00", status: "Scheduled" },
+  { id: "sched-13", organizationId: "org-1", employeeId: "emp-1", jobsiteId: "job-1", date: "2026-03-12", shiftStart: "07:00", shiftEnd: "15:00", status: "Scheduled" },
+  { id: "sched-14", organizationId: "org-1", employeeId: "emp-2", jobsiteId: "job-2", date: "2026-03-12", shiftStart: "07:00", shiftEnd: "15:30", status: "Scheduled" },
+  { id: "sched-15", organizationId: "org-1", employeeId: "emp-3", jobsiteId: "job-1", date: "2026-03-12", shiftStart: "08:00", shiftEnd: "16:00", status: "Scheduled" },
+  { id: "sched-16", organizationId: "org-1", employeeId: "emp-1", jobsiteId: "job-4", date: "2026-03-13", shiftStart: "07:00", shiftEnd: "15:00", status: "Scheduled" },
+  { id: "sched-17", organizationId: "org-1", employeeId: "emp-3", jobsiteId: "job-5", date: "2026-03-13", shiftStart: "08:00", shiftEnd: "16:00", status: "Scheduled" },
+  { id: "sched-18", organizationId: "org-1", employeeId: "emp-4", jobsiteId: "job-6", date: "2026-03-13", shiftStart: "07:00", shiftEnd: "15:00", status: "Scheduled" },
+];
+
+export const mockTimesheets: Timesheet[] = [
+  {
+    id: "ts-1", organizationId: "org-1", employeeId: "emp-1",
+    weekStartDate: "2026-03-02", status: "Approved",
+    submittedAt: "2026-03-06T17:00:00Z", approvedBy: "user-1", approvedAt: "2026-03-07T09:00:00Z",
+    totalHours: 40, notes: "Standard work week",
+  },
+  {
+    id: "ts-2", organizationId: "org-1", employeeId: "emp-2",
+    weekStartDate: "2026-03-02", status: "Approved",
+    submittedAt: "2026-03-06T17:30:00Z", approvedBy: "user-1", approvedAt: "2026-03-07T09:15:00Z",
+    totalHours: 42.5,
+  },
+  {
+    id: "ts-3", organizationId: "org-1", employeeId: "emp-3",
+    weekStartDate: "2026-03-02", status: "Submitted",
+    submittedAt: "2026-03-06T16:45:00Z",
+    totalHours: 38,
+  },
+  {
+    id: "ts-4", organizationId: "org-1", employeeId: "emp-4",
+    weekStartDate: "2026-03-02", status: "Submitted",
+    submittedAt: "2026-03-06T17:15:00Z",
+    totalHours: 40,
+  },
+  {
+    id: "ts-5", organizationId: "org-1", employeeId: "emp-1",
+    weekStartDate: "2026-03-09", status: "Draft",
+    totalHours: 16,
+  },
+  {
+    id: "ts-6", organizationId: "org-1", employeeId: "emp-2",
+    weekStartDate: "2026-03-09", status: "Draft",
+    totalHours: 17,
+  },
+];
+
+export const mockTimesheetEntries: TimesheetEntry[] = [
+  { id: "tse-1", timesheetId: "ts-1", date: "2026-03-02", jobsiteId: "job-1", hours: 8, description: "Daily SSM walk - One Vanderbilt" },
+  { id: "tse-2", timesheetId: "ts-1", date: "2026-03-03", jobsiteId: "job-1", hours: 8, description: "Daily SSM walk - One Vanderbilt" },
+  { id: "tse-3", timesheetId: "ts-1", date: "2026-03-04", jobsiteId: "job-5", hours: 8, description: "Safety audit - WTC Campus" },
+  { id: "tse-4", timesheetId: "ts-1", date: "2026-03-05", jobsiteId: "job-1", hours: 8, description: "Daily SSM walk - One Vanderbilt" },
+  { id: "tse-5", timesheetId: "ts-1", date: "2026-03-06", jobsiteId: "job-4", hours: 8, description: "Crane inspection - Queens Plaza" },
+  { id: "tse-6", timesheetId: "ts-2", date: "2026-03-02", jobsiteId: "job-2", hours: 8.5, description: "Weekly audit - Hudson Yards" },
+  { id: "tse-7", timesheetId: "ts-2", date: "2026-03-03", jobsiteId: "job-2", hours: 8.5, description: "Scaffold inspection - Hudson Yards" },
+  { id: "tse-8", timesheetId: "ts-2", date: "2026-03-04", jobsiteId: "job-4", hours: 8.5, description: "Safety coordination - Queens Plaza" },
+  { id: "tse-9", timesheetId: "ts-2", date: "2026-03-05", jobsiteId: "job-2", hours: 8.5, description: "Daily walk - Hudson Yards" },
+  { id: "tse-10", timesheetId: "ts-2", date: "2026-03-06", jobsiteId: "job-2", hours: 8.5, description: "Daily walk - Hudson Yards" },
+  { id: "tse-11", timesheetId: "ts-5", date: "2026-03-09", jobsiteId: "job-1", hours: 8, description: "Daily SSM walk - One Vanderbilt" },
+  { id: "tse-12", timesheetId: "ts-5", date: "2026-03-10", jobsiteId: "job-1", hours: 8, description: "Daily SSM walk - One Vanderbilt" },
+  { id: "tse-13", timesheetId: "ts-6", date: "2026-03-09", jobsiteId: "job-2", hours: 8.5, description: "Daily walk - Hudson Yards" },
+  { id: "tse-14", timesheetId: "ts-6", date: "2026-03-10", jobsiteId: "job-4", hours: 8.5, description: "Safety coordination - Queens Plaza" },
 ];
