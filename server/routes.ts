@@ -171,11 +171,12 @@ export async function registerRoutes(
   });
 
   app.patch("/api/employees/:id", (req, res) => {
-    const { title, phone, status, certifications, licenseNumbers, emergencyContact, emergencyPhone, hourlyRate, notes } = req.body;
+    const { title, phone, status, hireDate, certifications, licenseNumbers, emergencyContact, emergencyPhone, hourlyRate, notes } = req.body;
     const updates: Record<string, any> = {};
     if (title !== undefined) updates.title = title;
     if (phone !== undefined) updates.phone = phone;
     if (status !== undefined) updates.status = status;
+    if (hireDate !== undefined) updates.hireDate = hireDate;
     if (certifications !== undefined) updates.certifications = certifications;
     if (licenseNumbers !== undefined) updates.licenseNumbers = licenseNumbers;
     if (emergencyContact !== undefined) updates.emergencyContact = emergencyContact;

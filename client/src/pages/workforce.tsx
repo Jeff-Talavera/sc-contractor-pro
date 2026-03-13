@@ -23,6 +23,7 @@ import {
   ArrowLeft, Plus, Search, UserCog, Phone, Mail, Calendar,
   Clock, ChevronLeft, ChevronRight, Award, Shield, MapPin,
   CheckCircle2, XCircle, AlertCircle, FileText, Send, ThumbsUp,
+  Pencil, Ban,
 } from "lucide-react";
 
 const statusColors: Record<string, string> = {
@@ -271,6 +272,7 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
 function DirectoryTab() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
   const [addOpen, setAddOpen] = useState(false);
 
   const { data: employees, isLoading } = useQuery<EmployeeProfile[]>({ queryKey: ["/api/employees"] });
@@ -282,6 +284,12 @@ function DirectoryTab() {
     let result = employees ?? [];
     if (statusFilter !== "all") {
       result = result.filter(e => e.status === statusFilter);
+    }
+    if (roleFilter !== "all") {
+      result = result.filter(e => {
+        const user = userMap.get(e.userId);
+        return user?.role === roleFilter;
+      });
     }
     if (search) {
       const q = search.toLowerCase();
@@ -295,7 +303,7 @@ function DirectoryTab() {
       });
     }
     return result;
-  }, [employees, search, statusFilter, userMap]);
+  }, [employees, search, statusFilter, roleFilter, userMap]);
 
   return (
     <div className="space-y-4">
@@ -321,6 +329,17 @@ function DirectoryTab() {
             <SelectItem value="On Leave">On Leave</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={roleFilter} onValueChange={setRoleFilter}>
+          <SelectTrigger className="w-[140px]" data-testid="select-role-filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Roles</SelectItem>
+            <SelectItem value="Owner">Owner</SelectItem>
+            <SelectItem value="Admin">Admin</SelectItem>
+            <SelectItem value="Inspector">Inspector</SelectItem>
+          </SelectContent>
+        </Select>
         <Button onClick={() => setAddOpen(true)} data-testid="button-add-employee">
           <Plus className="h-4 w-4 mr-2" /> Add Employee
         </Button>
@@ -333,7 +352,7 @@ function DirectoryTab() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <UserCog className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="text-sm">{search || statusFilter !== "all" ? "No employees match your filters" : "No employee profiles yet"}</p>
+          <p className="text-sm">{search || statusFilter !== "all" || roleFilter !== "all" ? "No employees match your filters" : "No employee profiles yet"}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -601,19 +620,37 @@ function ScheduleTab() {
                         {entries.map(entry => {
                           const jobsite = jobsiteMap.get(entry.jobsiteId);
                           const next = nextStatus(entry.status);
+                          const canCancel = entry.status === "Scheduled" || entry.status === "Confirmed";
                           return (
                             <div
                               key={entry.id}
-                              className={`rounded px-1.5 py-1 mb-1 text-xs ${scheduleStatusColors[entry.status]} ${next ? "cursor-pointer" : ""}`}
-                              onClick={() => {
-                                if (next) updateStatusMutation.mutate({ id: entry.id, status: next });
-                              }}
-                              title={next ? `Click to mark ${next}` : entry.status}
+                              className={`rounded px-1.5 py-1 mb-1 text-xs ${scheduleStatusColors[entry.status]} group relative`}
                               data-testid={`schedule-chip-${entry.id}`}
                             >
-                              <div className="font-medium truncate">{jobsite?.name ?? "Unknown"}</div>
+                              <div
+                                className={`font-medium truncate ${next ? "cursor-pointer" : ""}`}
+                                onClick={() => {
+                                  if (next) updateStatusMutation.mutate({ id: entry.id, status: next });
+                                }}
+                                title={next ? `Click to mark ${next}` : entry.status}
+                              >
+                                {jobsite?.name ?? "Unknown"}
+                              </div>
                               {entry.shiftStart && (
                                 <div className="text-[10px] opacity-75">{entry.shiftStart}{entry.shiftEnd ? `–${entry.shiftEnd}` : ""}</div>
+                              )}
+                              {canCancel && (
+                                <button
+                                  className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground items-center justify-center text-[10px] hidden group-hover:flex"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateStatusMutation.mutate({ id: entry.id, status: "Cancelled" });
+                                  }}
+                                  title="Cancel assignment"
+                                  data-testid={`button-cancel-${entry.id}`}
+                                >
+                                  <Ban className="h-3 w-3" />
+                                </button>
                               )}
                             </div>
                           );
@@ -1085,7 +1122,116 @@ function TimesheetsTab() {
   );
 }
 
+function EditEmployeeDialog({ employee, open, onOpenChange }: { employee: EmployeeProfile; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { toast } = useToast();
+  const editSchema = z.object({
+    title: z.string().min(1, "Title is required"),
+    phone: z.string().min(1, "Phone is required"),
+    status: z.string(),
+    hireDate: z.string().min(1, "Hire date is required"),
+    hourlyRate: z.coerce.number().optional(),
+    emergencyContact: z.string().optional(),
+    emergencyPhone: z.string().optional(),
+    certifications: z.string(),
+    notes: z.string().optional(),
+  });
+  const form = useForm<z.infer<typeof editSchema>>({
+    resolver: zodResolver(editSchema),
+    defaultValues: {
+      title: employee.title,
+      phone: employee.phone,
+      status: employee.status,
+      hireDate: employee.hireDate,
+      hourlyRate: employee.hourlyRate ?? undefined,
+      emergencyContact: employee.emergencyContact ?? "",
+      emergencyPhone: employee.emergencyPhone ?? "",
+      certifications: employee.certifications.join(", "),
+      notes: employee.notes ?? "",
+    },
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (values: z.infer<typeof editSchema>) => {
+      const payload = {
+        title: values.title,
+        phone: values.phone,
+        status: values.status,
+        hireDate: values.hireDate,
+        hourlyRate: values.hourlyRate ?? null,
+        emergencyContact: values.emergencyContact || null,
+        emergencyPhone: values.emergencyPhone || null,
+        certifications: values.certifications.split(",").map(c => c.trim()).filter(Boolean),
+        notes: values.notes || null,
+      };
+      const res = await apiRequest("PATCH", `/api/employees/${employee.id}`, payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      toast({ title: "Employee updated" });
+      onOpenChange(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Employee</DialogTitle>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(v => mutation.mutate(v))} className="space-y-4">
+            <FormField control={form.control} name="title" render={({ field }) => (
+              <FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} data-testid="input-edit-title" /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField control={form.control} name="phone" render={({ field }) => (
+              <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} data-testid="input-edit-phone" /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField control={form.control} name="status" render={({ field }) => (
+              <FormItem><FormLabel>Status</FormLabel><FormControl>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger data-testid="select-edit-status"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Active">Active</SelectItem>
+                    <SelectItem value="Inactive">Inactive</SelectItem>
+                    <SelectItem value="On Leave">On Leave</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField control={form.control} name="hireDate" render={({ field }) => (
+              <FormItem><FormLabel>Hire Date</FormLabel><FormControl><Input type="date" {...field} data-testid="input-edit-hiredate" /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField control={form.control} name="hourlyRate" render={({ field }) => (
+              <FormItem><FormLabel>Hourly Rate ($)</FormLabel><FormControl><Input type="number" step="0.01" {...field} data-testid="input-edit-rate" /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField control={form.control} name="emergencyContact" render={({ field }) => (
+              <FormItem><FormLabel>Emergency Contact</FormLabel><FormControl><Input {...field} data-testid="input-edit-emergency" /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField control={form.control} name="emergencyPhone" render={({ field }) => (
+              <FormItem><FormLabel>Emergency Phone</FormLabel><FormControl><Input {...field} data-testid="input-edit-emergencyphone" /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField control={form.control} name="certifications" render={({ field }) => (
+              <FormItem><FormLabel>Certifications (comma-separated)</FormLabel><FormControl><Input {...field} data-testid="input-edit-certs" /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField control={form.control} name="notes" render={({ field }) => (
+              <FormItem><FormLabel>Notes</FormLabel><FormControl><Textarea {...field} data-testid="input-edit-notes" /></FormControl><FormMessage /></FormItem>
+            )} />
+            <Button type="submit" className="w-full" disabled={mutation.isPending} data-testid="button-save-employee">
+              {mutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function EmployeeDetail({ id }: { id: string }) {
+  const [editOpen, setEditOpen] = useState(false);
   const { data: employee, isLoading } = useQuery<EmployeeProfile>({
     queryKey: ["/api/employees", id],
   });
@@ -1140,7 +1286,12 @@ function EmployeeDetail({ id }: { id: string }) {
               </div>
               <p className="text-sm text-muted-foreground">{employee.title}</p>
             </div>
+            <Button variant="outline" onClick={() => setEditOpen(true)} data-testid="button-edit-employee">
+              <Pencil className="h-4 w-4 mr-2" /> Edit
+            </Button>
           </div>
+
+          <EditEmployeeDialog employee={employee} open={editOpen} onOpenChange={setEditOpen} />
 
           <div className="grid gap-6 md:grid-cols-2">
             <Card data-testid="card-employee-contact">
