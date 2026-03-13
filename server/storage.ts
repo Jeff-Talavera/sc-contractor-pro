@@ -57,6 +57,7 @@ export interface IStorage {
   createEmployeeProfile(orgId: string, data: InsertEmployeeProfile): EmployeeProfile;
   updateEmployeeProfile(id: string, updates: Partial<EmployeeProfile>): EmployeeProfile | undefined;
 
+  getScheduleEntry(id: string): ScheduleEntry | undefined;
   getScheduleEntriesByOrg(orgId: string): ScheduleEntry[];
   getScheduleEntriesByEmployee(employeeId: string): ScheduleEntry[];
   getScheduleEntriesByDateRange(orgId: string, startDate: string, endDate: string): ScheduleEntry[];
@@ -273,6 +274,10 @@ export class MemStorage implements IStorage {
     if (!profile) return undefined;
     Object.assign(profile, updates);
     return profile;
+  }
+
+  getScheduleEntry(id: string): ScheduleEntry | undefined {
+    return this.scheduleEntries.get(id);
   }
 
   getScheduleEntriesByOrg(orgId: string): ScheduleEntry[] {

@@ -159,6 +159,8 @@ export async function registerRoutes(
   app.get("/api/employees/:id", (req, res) => {
     const profile = storage.getEmployeeProfile(req.params.id);
     if (!profile) return res.status(404).json({ message: "Employee not found" });
+    const user = storage.getCurrentUser();
+    if (profile.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     res.json(profile);
   });
 
@@ -202,6 +204,10 @@ export async function registerRoutes(
   });
 
   app.get("/api/schedule/employee/:employeeId", (req, res) => {
+    const emp = storage.getEmployeeProfile(req.params.employeeId);
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+    const user = storage.getCurrentUser();
+    if (emp.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     res.json(storage.getScheduleEntriesByEmployee(req.params.employeeId));
   });
 
@@ -214,6 +220,10 @@ export async function registerRoutes(
   });
 
   app.patch("/api/schedule/:id", (req, res) => {
+    const entry = storage.getScheduleEntry(req.params.id);
+    if (!entry) return res.status(404).json({ message: "Schedule entry not found" });
+    const user = storage.getCurrentUser();
+    if (entry.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     const { status, shiftStart, shiftEnd, notes } = req.body;
     const updates: Record<string, any> = {};
     if (status !== undefined) updates.status = status;
@@ -226,6 +236,10 @@ export async function registerRoutes(
   });
 
   app.delete("/api/schedule/:id", (req, res) => {
+    const entry = storage.getScheduleEntry(req.params.id);
+    if (!entry) return res.status(404).json({ message: "Schedule entry not found" });
+    const user = storage.getCurrentUser();
+    if (entry.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     const deleted = storage.deleteScheduleEntry(req.params.id);
     if (!deleted) return res.status(404).json({ message: "Schedule entry not found" });
     res.json({ success: true });
@@ -239,10 +253,16 @@ export async function registerRoutes(
   app.get("/api/timesheets/:id", (req, res) => {
     const ts = storage.getTimesheet(req.params.id);
     if (!ts) return res.status(404).json({ message: "Timesheet not found" });
+    const user = storage.getCurrentUser();
+    if (ts.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     res.json(ts);
   });
 
   app.get("/api/timesheets/employee/:employeeId", (req, res) => {
+    const emp = storage.getEmployeeProfile(req.params.employeeId);
+    if (!emp) return res.status(404).json({ message: "Employee not found" });
+    const user = storage.getCurrentUser();
+    if (emp.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     res.json(storage.getTimesheetsByEmployee(req.params.employeeId));
   });
 
@@ -255,6 +275,10 @@ export async function registerRoutes(
   });
 
   app.patch("/api/timesheets/:id", (req, res) => {
+    const ts = storage.getTimesheet(req.params.id);
+    if (!ts) return res.status(404).json({ message: "Timesheet not found" });
+    const user = storage.getCurrentUser();
+    if (ts.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     const { status, submittedAt, approvedBy, approvedAt, notes } = req.body;
     const updates: Record<string, any> = {};
     if (status !== undefined) updates.status = status;
@@ -268,6 +292,10 @@ export async function registerRoutes(
   });
 
   app.get("/api/timesheets/:id/entries", (req, res) => {
+    const ts = storage.getTimesheet(req.params.id);
+    if (!ts) return res.status(404).json({ message: "Timesheet not found" });
+    const user = storage.getCurrentUser();
+    if (ts.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     res.json(storage.getTimesheetEntriesByTimesheet(req.params.id));
   });
 

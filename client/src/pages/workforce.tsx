@@ -103,6 +103,8 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   });
 
   const [certInput, setCertInput] = useState("");
+  const [licenseKey, setLicenseKey] = useState("");
+  const [licenseVal, setLicenseVal] = useState("");
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {
@@ -170,21 +172,41 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
                 </FormItem>
               )} />
             </div>
-            <FormField control={form.control} name="hourlyRate" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Hourly Rate (optional)</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    placeholder="e.g., 75"
-                    value={field.value ?? ""}
-                    onChange={e => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                    data-testid="input-employee-rate"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField control={form.control} name="status" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Status</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-employee-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="Active">Active</SelectItem>
+                      <SelectItem value="Inactive">Inactive</SelectItem>
+                      <SelectItem value="On Leave">On Leave</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="hourlyRate" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Hourly Rate (optional)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="e.g., 75"
+                      value={field.value ?? ""}
+                      onChange={e => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                      data-testid="input-employee-rate"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
             <div>
               <p className="text-sm font-medium mb-2">Certifications</p>
               <div className="flex gap-2">
@@ -233,6 +255,59 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
                       <XCircle className="h-3 w-3" />
                     </button>
                   </Badge>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-2">License Numbers</p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="License type (e.g., SST Card)"
+                  value={licenseKey}
+                  onChange={e => setLicenseKey(e.target.value)}
+                  className="flex-1"
+                  data-testid="input-license-key"
+                />
+                <Input
+                  placeholder="Number"
+                  value={licenseVal}
+                  onChange={e => setLicenseVal(e.target.value)}
+                  className="flex-1"
+                  data-testid="input-license-val"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    if (licenseKey.trim() && licenseVal.trim()) {
+                      const current = form.getValues("licenseNumbers");
+                      form.setValue("licenseNumbers", { ...current, [licenseKey.trim()]: licenseVal.trim() });
+                      setLicenseKey("");
+                      setLicenseVal("");
+                    }
+                  }}
+                  data-testid="button-add-license"
+                >
+                  Add
+                </Button>
+              </div>
+              <div className="space-y-1 mt-2">
+                {Object.entries(form.watch("licenseNumbers")).map(([key, val]) => (
+                  <div key={key} className="flex items-center justify-between text-sm bg-muted/50 rounded px-2 py-1">
+                    <span>{key}: <span className="font-mono text-xs">{val}</span></span>
+                    <button
+                      type="button"
+                      className="hover:text-destructive"
+                      onClick={() => {
+                        const current = { ...form.getValues("licenseNumbers") };
+                        delete current[key];
+                        form.setValue("licenseNumbers", current);
+                      }}
+                    >
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>

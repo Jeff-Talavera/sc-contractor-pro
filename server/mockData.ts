@@ -16,6 +16,7 @@ export const mockUsers: User[] = [
   { id: "user-3", organizationId: "org-1", name: "Aisha Johnson", email: "aisha@safeguardnyc.com", role: "Inspector" },
   { id: "user-4", organizationId: "org-1", name: "Robert Kowalski", email: "robert@safeguardnyc.com", role: "Inspector" },
   { id: "user-5", organizationId: "org-2", name: "David Park", email: "david@metrosafetypartners.com", role: "Owner" },
+  { id: "user-6", organizationId: "org-1", name: "Tony Ramirez", email: "tony@safeguardnyc.com", role: "Inspector" },
 ];
 
 export const currentUser: User = mockUsers[0];
