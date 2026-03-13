@@ -1007,7 +1007,7 @@ function TimesheetDetail({ timesheet, onBack }: { timesheet: Timesheet; onBack: 
                       <div key={entry.id} className="flex items-center justify-between text-sm bg-muted/50 rounded px-2 py-1" data-testid={`entry-${entry.id}`}>
                         <div className="flex items-center gap-2 min-w-0">
                           <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
-                          <span className="truncate">{jobsiteMap.get(entry.jobsiteId)?.name ?? "Unknown"}</span>
+                          <span className="truncate">{entry.jobsiteId ? (jobsiteMap.get(entry.jobsiteId)?.name ?? "Unknown") : "No jobsite"}</span>
                           {entry.description && <span className="text-xs text-muted-foreground truncate">- {entry.description}</span>}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
@@ -1056,12 +1056,12 @@ function TimesheetDetail({ timesheet, onBack }: { timesheet: Timesheet; onBack: 
                     <Button
                       size="sm"
                       className="h-8 text-xs"
-                      disabled={!addJobsite || !addHours}
+                      disabled={!addHours}
                       onClick={() => {
                         addEntryMutation.mutate({
                           timesheetId: timesheet.id,
                           date,
-                          jobsiteId: addJobsite,
+                          jobsiteId: addJobsite || undefined,
                           hours: Number(addHours),
                           description: addDesc || undefined,
                         });
@@ -1199,6 +1199,9 @@ function TimesheetsTab() {
 
 function EditEmployeeDialog({ employee, open, onOpenChange }: { employee: EmployeeProfile; open: boolean; onOpenChange: (v: boolean) => void }) {
   const { toast } = useToast();
+  const [editLicenses, setEditLicenses] = useState<Record<string, string>>({ ...employee.licenseNumbers });
+  const [editLicKey, setEditLicKey] = useState("");
+  const [editLicVal, setEditLicVal] = useState("");
   const editSchema = z.object({
     title: z.string().min(1, "Title is required"),
     phone: z.string().min(1, "Phone is required"),
@@ -1236,6 +1239,7 @@ function EditEmployeeDialog({ employee, open, onOpenChange }: { employee: Employ
         emergencyContact: values.emergencyContact || null,
         emergencyPhone: values.emergencyPhone || null,
         certifications: values.certifications.split(",").map(c => c.trim()).filter(Boolean),
+        licenseNumbers: editLicenses,
         notes: values.notes || null,
       };
       const res = await apiRequest("PATCH", `/api/employees/${employee.id}`, payload);
@@ -1292,6 +1296,30 @@ function EditEmployeeDialog({ employee, open, onOpenChange }: { employee: Employ
             <FormField control={form.control} name="certifications" render={({ field }) => (
               <FormItem><FormLabel>Certifications (comma-separated)</FormLabel><FormControl><Input {...field} data-testid="input-edit-certs" /></FormControl><FormMessage /></FormItem>
             )} />
+            <div>
+              <p className="text-sm font-medium mb-2">License Numbers</p>
+              <div className="flex gap-2">
+                <Input placeholder="License type" value={editLicKey} onChange={e => setEditLicKey(e.target.value)} className="flex-1" data-testid="input-edit-lic-key" />
+                <Input placeholder="Number" value={editLicVal} onChange={e => setEditLicVal(e.target.value)} className="flex-1" data-testid="input-edit-lic-val" />
+                <Button type="button" variant="secondary" size="sm" onClick={() => {
+                  if (editLicKey.trim() && editLicVal.trim()) {
+                    setEditLicenses(prev => ({ ...prev, [editLicKey.trim()]: editLicVal.trim() }));
+                    setEditLicKey("");
+                    setEditLicVal("");
+                  }
+                }} data-testid="button-edit-add-license">Add</Button>
+              </div>
+              <div className="space-y-1 mt-2">
+                {Object.entries(editLicenses).map(([key, val]) => (
+                  <div key={key} className="flex items-center justify-between text-sm bg-muted/50 rounded px-2 py-1">
+                    <span>{key}: <span className="font-mono text-xs">{val}</span></span>
+                    <button type="button" className="hover:text-destructive" onClick={() => {
+                      setEditLicenses(prev => { const n = { ...prev }; delete n[key]; return n; });
+                    }}><XCircle className="h-3 w-3" /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
             <FormField control={form.control} name="notes" render={({ field }) => (
               <FormItem><FormLabel>Notes</FormLabel><FormControl><Textarea {...field} data-testid="input-edit-notes" /></FormControl><FormMessage /></FormItem>
             )} />

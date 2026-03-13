@@ -233,7 +233,7 @@ export interface TimesheetEntry {
   id: string;
   timesheetId: string;
   date: string;
-  jobsiteId: string;
+  jobsiteId?: string;
   hours: number;
   description?: string;
 }
@@ -271,7 +271,7 @@ export const insertTimesheetSchema = z.object({
 export const insertTimesheetEntrySchema = z.object({
   timesheetId: z.string().min(1, "Timesheet is required"),
   date: z.string().min(1, "Date is required"),
-  jobsiteId: z.string().min(1, "Jobsite is required"),
+  jobsiteId: z.string().optional(),
   hours: z.number().min(0, "Hours must be non-negative").max(24, "Hours cannot exceed 24"),
   description: z.string().optional(),
 });

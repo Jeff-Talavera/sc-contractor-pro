@@ -68,6 +68,7 @@ export interface IStorage {
   getTimesheetsByOrg(orgId: string): Timesheet[];
   getTimesheetsByEmployee(employeeId: string): Timesheet[];
   getTimesheet(id: string): Timesheet | undefined;
+  getTimesheetEntry(id: string): TimesheetEntry | undefined;
   createTimesheet(orgId: string, data: InsertTimesheet): Timesheet;
   updateTimesheet(id: string, updates: Partial<Timesheet>): Timesheet | undefined;
 
@@ -344,6 +345,10 @@ export class MemStorage implements IStorage {
     if (!ts) return undefined;
     Object.assign(ts, updates);
     return ts;
+  }
+
+  getTimesheetEntry(id: string): TimesheetEntry | undefined {
+    return this.timesheetEntries.get(id);
   }
 
   getTimesheetEntriesByTimesheet(timesheetId: string): TimesheetEntry[] {

@@ -302,11 +302,21 @@ export async function registerRoutes(
   app.post("/api/timesheet-entries", (req, res) => {
     const parsed = insertTimesheetEntrySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const ts = storage.getTimesheet(parsed.data.timesheetId);
+    if (!ts) return res.status(404).json({ message: "Timesheet not found" });
+    const user = storage.getCurrentUser();
+    if (ts.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     const entry = storage.createTimesheetEntry(parsed.data);
     res.status(201).json(entry);
   });
 
   app.patch("/api/timesheet-entries/:id", (req, res) => {
+    const entry = storage.getTimesheetEntry(req.params.id);
+    if (!entry) return res.status(404).json({ message: "Timesheet entry not found" });
+    const ts = storage.getTimesheet(entry.timesheetId);
+    if (!ts) return res.status(404).json({ message: "Timesheet not found" });
+    const user = storage.getCurrentUser();
+    if (ts.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     const { hours, description, jobsiteId } = req.body;
     const updates: Record<string, any> = {};
     if (hours !== undefined) updates.hours = hours;
@@ -318,6 +328,12 @@ export async function registerRoutes(
   });
 
   app.delete("/api/timesheet-entries/:id", (req, res) => {
+    const entry = storage.getTimesheetEntry(req.params.id);
+    if (!entry) return res.status(404).json({ message: "Timesheet entry not found" });
+    const ts = storage.getTimesheet(entry.timesheetId);
+    if (!ts) return res.status(404).json({ message: "Timesheet not found" });
+    const user = storage.getCurrentUser();
+    if (ts.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     const deleted = storage.deleteTimesheetEntry(req.params.id);
     if (!deleted) return res.status(404).json({ message: "Timesheet entry not found" });
     res.json({ success: true });
