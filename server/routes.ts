@@ -5,7 +5,7 @@ import {
   insertClientSchema, insertJobsiteSchema, insertInspectionSchema, insertObservationSchema,
   insertEmployeeProfileSchema, insertScheduleEntrySchema, insertTimesheetSchema, insertTimesheetEntrySchema
 } from "@shared/schema";
-import type { AiFinding } from "@shared/schema";
+import type { AiFinding, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -174,7 +174,7 @@ export async function registerRoutes(
 
   app.patch("/api/employees/:id", (req, res) => {
     const { title, phone, status, hireDate, certifications, licenseNumbers, emergencyContact, emergencyPhone, hourlyRate, notes } = req.body;
-    const updates: Record<string, any> = {};
+    const updates: Partial<Omit<EmployeeProfile, "id" | "organizationId" | "userId">> = {};
     if (title !== undefined) updates.title = title;
     if (phone !== undefined) updates.phone = phone;
     if (status !== undefined) updates.status = status;
@@ -225,7 +225,7 @@ export async function registerRoutes(
     const user = storage.getCurrentUser();
     if (entry.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     const { status, shiftStart, shiftEnd, notes } = req.body;
-    const updates: Record<string, any> = {};
+    const updates: Partial<Omit<ScheduleEntry, "id" | "organizationId" | "employeeId" | "jobsiteId" | "date">> = {};
     if (status !== undefined) updates.status = status;
     if (shiftStart !== undefined) updates.shiftStart = shiftStart;
     if (shiftEnd !== undefined) updates.shiftEnd = shiftEnd;
@@ -280,7 +280,7 @@ export async function registerRoutes(
     const user = storage.getCurrentUser();
     if (ts.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     const { status, submittedAt, approvedBy, approvedAt, notes } = req.body;
-    const updates: Record<string, any> = {};
+    const updates: Partial<Omit<Timesheet, "id" | "organizationId" | "employeeId" | "weekStartDate" | "totalHours">> = {};
     if (status !== undefined) updates.status = status;
     if (submittedAt !== undefined) updates.submittedAt = submittedAt;
     if (approvedBy !== undefined) updates.approvedBy = approvedBy;
@@ -318,7 +318,7 @@ export async function registerRoutes(
     const user = storage.getCurrentUser();
     if (ts.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
     const { hours, description, jobsiteId } = req.body;
-    const updates: Record<string, any> = {};
+    const updates: Partial<Omit<TimesheetEntry, "id" | "timesheetId" | "date">> = {};
     if (hours !== undefined) updates.hours = hours;
     if (description !== undefined) updates.description = description;
     if (jobsiteId !== undefined) updates.jobsiteId = jobsiteId;

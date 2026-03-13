@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import type { EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry, User, Jobsite } from "@shared/schema";
+import type { EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry, User, Jobsite, InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry } from "@shared/schema";
 import { insertEmployeeProfileSchema, insertScheduleEntrySchema, insertTimesheetSchema, insertTimesheetEntrySchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -107,7 +107,7 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [licenseVal, setLicenseVal] = useState("");
 
   const mutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: InsertEmployeeProfile) => {
       const res = await apiRequest("POST", "/api/employees", data);
       return res.json();
     },
@@ -488,7 +488,7 @@ function AssignDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
   });
 
   const mutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: InsertScheduleEntry) => {
       const res = await apiRequest("POST", "/api/schedule", data);
       return res.json();
     },
@@ -772,7 +772,7 @@ function NewTimesheetDialog({ open, onOpenChange }: { open: boolean; onOpenChang
   });
 
   const mutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: InsertTimesheet) => {
       const res = await apiRequest("POST", "/api/timesheets", data);
       return res.json();
     },
@@ -861,7 +861,7 @@ function TimesheetDetail({ timesheet, onBack }: { timesheet: Timesheet; onBack: 
   const [addDesc, setAddDesc] = useState("");
 
   const addEntryMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: InsertTimesheetEntry) => {
       const res = await apiRequest("POST", "/api/timesheet-entries", data);
       return res.json();
     },
