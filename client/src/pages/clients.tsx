@@ -183,7 +183,6 @@ function ClientsList() {
   );
 }
 
-const boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"];
 const projectTypes = ["NB", "ALT", "DEM", "FO"];
 
 function AddJobsiteForm({ clientId, onClose }: { clientId: string; onClose: () => void }) {
@@ -196,7 +195,8 @@ function AddJobsiteForm({ clientId, onClose }: { clientId: string; onClose: () =
       clientId,
       name: "",
       address: "",
-      borough: "Manhattan",
+      city: "",
+      state: "",
       bin: "",
       dobJobNumber: "",
       projectType: "NB",
@@ -244,29 +244,26 @@ function AddJobsiteForm({ clientId, onClose }: { clientId: string; onClose: () =
             </FormItem>
           )} />
 
+          <FormField control={form.control} name="address" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Address</FormLabel>
+              <FormControl><Input placeholder="e.g., 1 Vanderbilt Ave" {...field} data-testid="input-jobsite-address" /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField control={form.control} name="address" render={({ field }) => (
+            <FormField control={form.control} name="city" render={({ field }) => (
               <FormItem>
-                <FormLabel>Address</FormLabel>
-                <FormControl><Input placeholder="e.g., 1 Vanderbilt Ave" {...field} data-testid="input-jobsite-address" /></FormControl>
+                <FormLabel>City</FormLabel>
+                <FormControl><Input placeholder="e.g., New York" {...field} data-testid="input-jobsite-city" /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />
-            <FormField control={form.control} name="borough" render={({ field }) => (
+            <FormField control={form.control} name="state" render={({ field }) => (
               <FormItem>
-                <FormLabel>Borough</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger data-testid="select-jobsite-borough">
-                      <SelectValue />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {boroughs.map(b => (
-                      <SelectItem key={b} value={b}>{b}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <FormLabel>State / Province <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                <FormControl><Input placeholder="e.g., NY" {...field} data-testid="input-jobsite-state" /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />
@@ -275,14 +272,14 @@ function AddJobsiteForm({ clientId, onClose }: { clientId: string; onClose: () =
           <div className="grid gap-4 sm:grid-cols-3">
             <FormField control={form.control} name="bin" render={({ field }) => (
               <FormItem>
-                <FormLabel>BIN</FormLabel>
+                <FormLabel>Building ID / BIN <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
                 <FormControl><Input placeholder="e.g., 1015862" {...field} data-testid="input-jobsite-bin" /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />
             <FormField control={form.control} name="dobJobNumber" render={({ field }) => (
               <FormItem>
-                <FormLabel>DOB Job #</FormLabel>
+                <FormLabel>Job / Permit # <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
                 <FormControl><Input placeholder="e.g., 121587643" {...field} data-testid="input-jobsite-dob" /></FormControl>
                 <FormMessage />
               </FormItem>
@@ -467,7 +464,7 @@ function ClientDetail({ id }: { id: string }) {
                       <CardContent className="flex items-center justify-between gap-4 p-4">
                         <div className="min-w-0 flex-1">
                           <p className="font-medium truncate">{job.name}</p>
-                          <p className="text-xs text-muted-foreground">{job.address}, {job.borough}</p>
+                          <p className="text-xs text-muted-foreground">{job.address}, {job.city}{job.state ? `, ${job.state}` : ""}</p>
                         </div>
                         <div className="flex flex-wrap gap-1.5 shrink-0">
                           <Badge variant="secondary">{job.projectType}</Badge>

@@ -426,7 +426,7 @@ function NewInspectionWizard({ onClose }: { onClose: () => void }) {
             >
               <p className="text-sm font-medium">{job.name}</p>
               <p className="text-xs text-muted-foreground">
-                {clientMap.get(job.clientId)?.name} - {job.borough}
+                {clientMap.get(job.clientId)?.name} - {job.city}{job.state ? `, ${job.state}` : ""}
               </p>
             </div>
           ))}
@@ -1224,7 +1224,7 @@ function InspectionDetail({ id }: { id: string }) {
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span>{jobsite?.address}, {jobsite?.borough}</span>
+                  <span>{jobsite?.address}, {jobsite?.city}{jobsite?.state ? `, ${jobsite?.state}` : ""}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <UserIcon className="h-4 w-4 text-muted-foreground" />

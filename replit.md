@@ -1,7 +1,7 @@
-# SafeSite - NYC Construction Safety Management
+# SafeSite - Construction Safety Management
 
 ## Overview
-Multi-firm construction safety application for NYC-based safety firms (2-10 inspectors). Provides client/jobsite management, inspection workflows, observation tracking, NYC code reference guidance, public records monitoring (permits/complaints/violations), and AI-assisted photo analysis for safety observations.
+Multi-firm construction safety application for safety consulting firms (2-10 inspectors). Usable anywhere — designed for NYC and non-NYC users alike. Provides client/jobsite management, inspection workflows, observation tracking, code reference guidance (NYC Building Code, OSHA CFR 1926), public records monitoring (permits/complaints/violations), and AI-assisted photo analysis for safety observations.
 
 ## Architecture
 - **Frontend**: React + TypeScript with Vite, TanStack Query, wouter routing, shadcn/ui components
@@ -19,7 +19,7 @@ Multi-firm construction safety application for NYC-based safety firms (2-10 insp
 
 ## Data Models
 - **Organization** + **User** (multi-org, role-based: Owner/Admin/Inspector)
-- **Client** + **Jobsite** (with NYC-specific fields: BIN, DOB job number, borough, project type, site flags, monitorPublicRecords toggle)
+- **Client** + **Jobsite** (with fields: address, city, state, optional BIN/job number for NYC DOB, project type, site flags, monitorPublicRecords toggle)
 - **CodeReference** (Building Code Chapter 33 + Administrative Code sections with tags and plain-English summaries)
 - **InspectionTemplate** + **Inspection** + **Observation** (full inspection workflow with code reference linking)
 - **JobsitePermit** (DOB NOW/BIS/NYC Open Data permit records per jobsite)

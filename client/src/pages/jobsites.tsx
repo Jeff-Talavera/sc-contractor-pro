@@ -271,7 +271,6 @@ function ComplaintsViolationsTab({ jobsiteId }: { jobsiteId: string }) {
   );
 }
 
-const boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"];
 const projectTypes = ["NB", "ALT", "DEM", "FO"];
 
 function AddJobsiteForm({ preselectedClientId, onClose }: { preselectedClientId?: string; onClose: () => void }) {
@@ -285,7 +284,8 @@ function AddJobsiteForm({ preselectedClientId, onClose }: { preselectedClientId?
       clientId: preselectedClientId ?? "",
       name: "",
       address: "",
-      borough: "Manhattan",
+      city: "",
+      state: "",
       bin: "",
       dobJobNumber: "",
       projectType: "NB",
@@ -356,29 +356,26 @@ function AddJobsiteForm({ preselectedClientId, onClose }: { preselectedClientId?
             </FormItem>
           )} />
 
+          <FormField control={form.control} name="address" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Address</FormLabel>
+              <FormControl><Input placeholder="e.g., 1 Vanderbilt Ave" {...field} data-testid="input-jobsite-address" /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField control={form.control} name="address" render={({ field }) => (
+            <FormField control={form.control} name="city" render={({ field }) => (
               <FormItem>
-                <FormLabel>Address</FormLabel>
-                <FormControl><Input placeholder="e.g., 1 Vanderbilt Ave" {...field} data-testid="input-jobsite-address" /></FormControl>
+                <FormLabel>City</FormLabel>
+                <FormControl><Input placeholder="e.g., New York" {...field} data-testid="input-jobsite-city" /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />
-            <FormField control={form.control} name="borough" render={({ field }) => (
+            <FormField control={form.control} name="state" render={({ field }) => (
               <FormItem>
-                <FormLabel>Borough</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger data-testid="select-jobsite-borough">
-                      <SelectValue />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {boroughs.map(b => (
-                      <SelectItem key={b} value={b}>{b}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <FormLabel>State / Province <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                <FormControl><Input placeholder="e.g., NY" {...field} data-testid="input-jobsite-state" /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />
@@ -387,14 +384,14 @@ function AddJobsiteForm({ preselectedClientId, onClose }: { preselectedClientId?
           <div className="grid gap-4 sm:grid-cols-3">
             <FormField control={form.control} name="bin" render={({ field }) => (
               <FormItem>
-                <FormLabel>BIN</FormLabel>
+                <FormLabel>Building ID / BIN <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
                 <FormControl><Input placeholder="e.g., 1015862" {...field} data-testid="input-jobsite-bin" /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />
             <FormField control={form.control} name="dobJobNumber" render={({ field }) => (
               <FormItem>
-                <FormLabel>DOB Job #</FormLabel>
+                <FormLabel>Job / Permit # <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
                 <FormControl><Input placeholder="e.g., 121587643" {...field} data-testid="input-jobsite-dob" /></FormControl>
                 <FormMessage />
               </FormItem>
@@ -502,7 +499,8 @@ function JobsitesList() {
   const filtered = jobsites?.filter(j =>
     j.name.toLowerCase().includes(search.toLowerCase()) ||
     j.address.toLowerCase().includes(search.toLowerCase()) ||
-    j.borough.toLowerCase().includes(search.toLowerCase()) ||
+    j.city.toLowerCase().includes(search.toLowerCase()) ||
+    (j.state ?? "").toLowerCase().includes(search.toLowerCase()) ||
     (clientMap.get(j.clientId)?.name ?? "").toLowerCase().includes(search.toLowerCase())
   ) ?? [];
 
@@ -526,7 +524,7 @@ function JobsitesList() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by name, address, borough, or client..."
+              placeholder="Search by name, address, city, or client..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="pl-9"
@@ -556,7 +554,7 @@ function JobsitesList() {
                             {clientMap.get(job.clientId)?.name ?? "Unknown client"}
                           </p>
                           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                            <MapPin className="h-3 w-3" /> {job.address}, {job.borough}
+                            <MapPin className="h-3 w-3" /> {job.address}, {job.city}{job.state ? `, ${job.state}` : ""}
                           </p>
                         </div>
                         <Badge variant="secondary" className="shrink-0">{job.projectType}</Badge>
@@ -650,16 +648,20 @@ function JobsiteDetail({ id }: { id: string }) {
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-sm">
                     <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <span>{jobsite.address}, {jobsite.borough}</span>
+                    <span>{jobsite.address}, {jobsite.city}{jobsite.state ? `, ${jobsite.state}` : ""}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <span>BIN: {jobsite.bin}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <span>DOB Job #: {jobsite.dobJobNumber}</span>
-                  </div>
+                  {jobsite.bin && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span>BIN: {jobsite.bin}</span>
+                    </div>
+                  )}
+                  {jobsite.dobJobNumber && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span>Job #: {jobsite.dobJobNumber}</span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 text-sm">
                     <Layers className="h-4 w-4 text-muted-foreground shrink-0" />
                     <span>{jobsite.projectType} - {jobsite.buildingType ?? "N/A"}{jobsite.stories ? `, ${jobsite.stories} stories` : ""}</span>

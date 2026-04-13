@@ -67,7 +67,7 @@ export default function CodeLibraryPage() {
           <div>
             <h1 className="text-2xl font-semibold" data-testid="text-code-library-title">Code Library</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              NYC Building Code Chapter 33, Administrative Code, and OSHA CFR 1926 references
+              Building codes, OSHA CFR 1926, and regulatory references for construction safety
             </p>
           </div>
 

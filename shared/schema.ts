@@ -30,9 +30,10 @@ export interface Jobsite {
   clientId: string;
   name: string;
   address: string;
-  borough: string;
-  bin: string;
-  dobJobNumber: string;
+  city: string;
+  state?: string;
+  bin?: string;
+  dobJobNumber?: string;
   projectType: string;
   buildingType?: string;
   stories?: number;
@@ -155,9 +156,10 @@ export const insertJobsiteSchema = z.object({
   clientId: z.string().min(1, "Client is required"),
   name: z.string().min(1, "Name is required"),
   address: z.string().min(1, "Address is required"),
-  borough: z.string().min(1, "Borough is required"),
-  bin: z.string().min(1, "BIN is required"),
-  dobJobNumber: z.string().min(1, "DOB job number is required"),
+  city: z.string().min(1, "City is required"),
+  state: z.string().optional(),
+  bin: z.string().optional(),
+  dobJobNumber: z.string().optional(),
   projectType: z.string().min(1, "Project type is required"),
   buildingType: z.string().optional(),
   stories: z.number().optional(),

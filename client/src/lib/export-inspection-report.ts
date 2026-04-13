@@ -132,7 +132,7 @@ export async function exportInspectionReportPDF(
   doc.text(`Re: Safety Inspection Report — ${jobsite.name}`, margin, y);
   y += 6;
   doc.setFontSize(9);
-  doc.text(`${jobsite.address}, ${jobsite.borough}, NY`, margin, y);
+  doc.text(`${jobsite.address}, ${jobsite.city}${jobsite.state ? `, ${jobsite.state}` : ""}`, margin, y);
   y += 10;
   doc.setFont("helvetica", "normal");
 
@@ -227,7 +227,7 @@ export async function exportInspectionReportPDF(
     ["Completed For", `${client.name}`],
     ...(recipientContact ? [["Contact", recipientContact] as [string, string]] : []),
     ["Inspection Date", formattedDate],
-    ["Location", `${jobsite.address}, ${jobsite.borough}, NY`],
+    ["Location", `${jobsite.address}, ${jobsite.city}${jobsite.state ? `, ${jobsite.state}` : ""}`],
     ["Inspector", `${inspector.name}${inspectorCredentials ? `, ${inspectorCredentials}` : ""}`],
     ["Total Items Reviewed", `${totalCount} (${positiveCount} compliant, ${issueObs.length} requiring action)`],
   ];

@@ -49,7 +49,7 @@ export function AppSidebar() {
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-semibold leading-tight">SafeSite</span>
-              <span className="text-xs text-muted-foreground leading-tight">NYC Construction Safety</span>
+              <span className="text-xs text-muted-foreground leading-tight">Construction Safety</span>
             </div>
           </div>
         </Link>

@@ -59,7 +59,7 @@ export const mockJobsites: Jobsite[] = [
   {
     id: "job-1", organizationId: "org-1", clientId: "client-1",
     name: "One Vanderbilt Phase 2",
-    address: "1 Vanderbilt Ave", borough: "Manhattan", bin: "1015862", dobJobNumber: "121587643",
+    address: "1 Vanderbilt Ave", city: "Manhattan", state: "NY", bin: "1015862", dobJobNumber: "121587643",
     projectType: "NB", buildingType: "Commercial", stories: 67,
     hasScaffold: true, hasHoist: true, hasCrane: true, hasExcavation: false,
     monitorPublicRecords: true,
@@ -67,7 +67,7 @@ export const mockJobsites: Jobsite[] = [
   {
     id: "job-2", organizationId: "org-1", clientId: "client-1",
     name: "Hudson Yards Tower C",
-    address: "500 W 33rd St", borough: "Manhattan", bin: "1012456", dobJobNumber: "121598712",
+    address: "500 W 33rd St", city: "Manhattan", state: "NY", bin: "1012456", dobJobNumber: "121598712",
     projectType: "NB", buildingType: "Mixed-Use", stories: 52,
     hasScaffold: true, hasHoist: true, hasCrane: true, hasExcavation: true,
     monitorPublicRecords: true,
@@ -75,7 +75,7 @@ export const mockJobsites: Jobsite[] = [
   {
     id: "job-3", organizationId: "org-1", clientId: "client-2",
     name: "Brooklyn Heights Residential",
-    address: "250 Cadman Plaza W", borough: "Brooklyn", bin: "3002451", dobJobNumber: "321456789",
+    address: "250 Cadman Plaza W", city: "Brooklyn", state: "NY", bin: "3002451", dobJobNumber: "321456789",
     projectType: "ALT", buildingType: "Residential", stories: 18,
     hasScaffold: true, hasHoist: false, hasCrane: false, hasExcavation: false,
     monitorPublicRecords: false,
@@ -83,7 +83,7 @@ export const mockJobsites: Jobsite[] = [
   {
     id: "job-4", organizationId: "org-1", clientId: "client-3",
     name: "Queens Plaza Office Tower",
-    address: "29-11 Queens Plaza N", borough: "Queens", bin: "4004523", dobJobNumber: "421789012",
+    address: "29-11 Queens Plaza N", city: "Queens", state: "NY", bin: "4004523", dobJobNumber: "421789012",
     projectType: "NB", buildingType: "Commercial", stories: 35,
     hasScaffold: true, hasHoist: true, hasCrane: true, hasExcavation: true,
     monitorPublicRecords: true,
@@ -91,7 +91,7 @@ export const mockJobsites: Jobsite[] = [
   {
     id: "job-5", organizationId: "org-1", clientId: "client-4",
     name: "WTC Campus Renovation",
-    address: "200 Greenwich St", borough: "Manhattan", bin: "1001234", dobJobNumber: "121345678",
+    address: "200 Greenwich St", city: "Manhattan", state: "NY", bin: "1001234", dobJobNumber: "121345678",
     projectType: "ALT", buildingType: "Commercial", stories: 44,
     hasScaffold: true, hasHoist: false, hasCrane: false, hasExcavation: false,
     monitorPublicRecords: false,
@@ -99,7 +99,7 @@ export const mockJobsites: Jobsite[] = [
   {
     id: "job-6", organizationId: "org-1", clientId: "client-2",
     name: "Bronx Medical Center Demolition",
-    address: "1400 Pelham Pkwy S", borough: "Bronx", bin: "2045678", dobJobNumber: "221567890",
+    address: "1400 Pelham Pkwy S", city: "Bronx", state: "NY", bin: "2045678", dobJobNumber: "221567890",
     projectType: "DEM", buildingType: "Institutional", stories: 6,
     hasScaffold: false, hasHoist: false, hasCrane: true, hasExcavation: true,
     monitorPublicRecords: true,
