@@ -216,9 +216,16 @@ export async function exportInspectionReportPDF(
   doc.text("SCORE", pageWidth - margin - 15, y + 11, { align: "center" });
   doc.setTextColor(0, 0, 0);
 
+  const recipientContact = [
+    inspection.recipientName,
+    inspection.recipientTitle,
+    inspection.recipientCompany,
+  ].filter(Boolean).join(", ");
+
   const summaryRows: [string, string][] = [
     ["Report Type", "Construction Site Safety Inspection"],
     ["Completed For", `${client.name}`],
+    ...(recipientContact ? [["Contact", recipientContact] as [string, string]] : []),
     ["Inspection Date", formattedDate],
     ["Location", `${jobsite.address}, ${jobsite.borough}, NY`],
     ["Inspector", `${inspector.name}${inspectorCredentials ? `, ${inspectorCredentials}` : ""}`],
@@ -254,8 +261,6 @@ export async function exportInspectionReportPDF(
     doc.text(scopeLines, margin, y);
     y += scopeLines.length * 5 + 8;
   }
-
-  addPageFooter(doc, pageWidth, 2, 99, ccLine);
 
   // ─── PAGES 3+: FINDINGS BY CATEGORY ────────────────────────────────────────
   doc.addPage();
