@@ -67,7 +67,7 @@ export default function CodeLibraryPage() {
           <div>
             <h1 className="text-2xl font-semibold" data-testid="text-code-library-title">Code Library</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              NYC Building Code Chapter 33 and Administrative Code references
+              NYC Building Code Chapter 33, Administrative Code, and OSHA CFR 1926 references
             </p>
           </div>
 
@@ -133,8 +133,8 @@ export default function CodeLibraryPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant={cr.codeType === "BC" ? "default" : "secondary"} className="shrink-0">
-                            {cr.codeType === "BC" ? "Building Code" : "Admin Code"}
+                          <Badge variant={cr.codeType === "BC" ? "default" : cr.codeType === "OSHA" ? "secondary" : "secondary"} className={`shrink-0 ${cr.codeType === "OSHA" ? "bg-orange-500/15 text-orange-700 dark:text-orange-400" : ""}`}>
+                            {cr.codeType === "BC" ? "Building Code" : cr.codeType === "OSHA" ? "OSHA" : "Admin Code"}
                           </Badge>
                           <span className="font-mono text-sm font-semibold">{cr.id}</span>
                         </div>

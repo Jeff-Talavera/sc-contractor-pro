@@ -669,7 +669,8 @@ function AddObservationForm({
     recommendedAction: z.string().optional(),
   });
 
-  const form = useForm({
+  type ObsFormValues = z.infer<typeof observationFormSchema>;
+  const form = useForm<ObsFormValues>({
     resolver: zodResolver(observationFormSchema),
     defaultValues: {
       inspectionId,
@@ -677,9 +678,9 @@ function AddObservationForm({
       location: "",
       description: "",
       category: "Fall Protection",
-      type: "issue" as const,
-      severity: "Medium" as const,
-      status: "Open" as const,
+      type: "issue",
+      severity: "Medium",
+      status: "Open",
       correctedOnSite: false,
       assignedTo: "",
       dueDate: "",
