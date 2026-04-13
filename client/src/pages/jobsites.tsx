@@ -683,18 +683,20 @@ function JobsiteDetail({ id }: { id: string }) {
                       <HardHat className="h-3 w-3 mr-1" /> Excavation
                     </Badge>
                   </div>
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <a href={dobNowUrl} target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" size="sm" data-testid="button-dob-now">
-                        Open in DOB NOW <ExternalLink className="h-3 w-3 ml-1" />
-                      </Button>
-                    </a>
-                    <a href={bisUrl} target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" size="sm" data-testid="button-bis">
-                        Open in BIS <ExternalLink className="h-3 w-3 ml-1" />
-                      </Button>
-                    </a>
-                  </div>
+                  {jobsite.bin && (
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      <a href={dobNowUrl} target="_blank" rel="noopener noreferrer">
+                        <Button variant="outline" size="sm" data-testid="button-dob-now">
+                          Open in DOB NOW <ExternalLink className="h-3 w-3 ml-1" />
+                        </Button>
+                      </a>
+                      <a href={bisUrl} target="_blank" rel="noopener noreferrer">
+                        <Button variant="outline" size="sm" data-testid="button-bis">
+                          Open in BIS <ExternalLink className="h-3 w-3 ml-1" />
+                        </Button>
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
