@@ -1569,7 +1569,7 @@ function InspectionsList() {
                               <Calendar className="h-3 w-3" /> {insp.date}
                             </span>
                             <span className="flex items-center gap-1">
-                              <MapPin className="h-3 w-3" /> {jobsite?.name ?? "Unknown"}
+                              <MapPin className="h-3 w-3" /> {jobsite ? `${jobsite.city}${jobsite.state ? `, ${jobsite.state}` : ""}` : "Unknown"}
                             </span>
                             <span className="flex items-center gap-1">
                               <UserIcon className="h-3 w-3" /> {user?.name ?? "Unknown"}

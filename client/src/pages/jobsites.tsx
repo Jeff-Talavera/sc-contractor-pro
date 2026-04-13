@@ -385,14 +385,14 @@ function AddJobsiteForm({ preselectedClientId, onClose }: { preselectedClientId?
             <FormField control={form.control} name="bin" render={({ field }) => (
               <FormItem>
                 <FormLabel>Building ID / BIN <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
-                <FormControl><Input placeholder="e.g., 1015862" {...field} data-testid="input-jobsite-bin" /></FormControl>
+                <FormControl><Input placeholder="NYC BIN (e.g., 1015862)" {...field} data-testid="input-jobsite-bin" /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />
             <FormField control={form.control} name="dobJobNumber" render={({ field }) => (
               <FormItem>
                 <FormLabel>Job / Permit # <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
-                <FormControl><Input placeholder="e.g., 121587643" {...field} data-testid="input-jobsite-dob" /></FormControl>
+                <FormControl><Input placeholder="NYC DOB Job # or permit #" {...field} data-testid="input-jobsite-dob" /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />
