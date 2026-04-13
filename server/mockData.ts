@@ -254,6 +254,181 @@ export const mockCodeReferences: CodeReference[] = [
     tags: ["violations", "penalties", "enforcement", "administrative"],
     officialUrl: "https://www.nyc.gov/buildings/code"
   },
+  {
+    id: "OSHA-1926.20", codeType: "OSHA", sectionNumber: "1926.20",
+    title: "General Safety and Health Provisions",
+    plainSummary: "Employers must initiate and maintain programs to comply with safety regulations. Frequent and regular inspections must be made by competent persons. Employees must not be assigned tasks they are not qualified to perform safely.",
+    tags: ["general safety", "competent person", "safety program"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.20"
+  },
+  {
+    id: "OSHA-1926.21", codeType: "OSHA", sectionNumber: "1926.21",
+    title: "Safety Training and Education",
+    plainSummary: "Employers must instruct each employee in the recognition and avoidance of unsafe conditions and the regulations applicable to the work environment. Training must cover all safety hazards present on the job.",
+    tags: ["training", "education", "safety program"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.21"
+  },
+  {
+    id: "OSHA-1926.25", codeType: "OSHA", sectionNumber: "1926.25",
+    title: "Housekeeping",
+    plainSummary: "During construction, form and scrap lumber with protruding nails and all other debris shall be kept cleared from work areas, passageways, and stairs in and around buildings or other structures. Combustible scrap and debris shall be removed at regular intervals.",
+    tags: ["housekeeping", "debris", "walkways", "fire safety"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.25"
+  },
+  {
+    id: "OSHA-1926.95", codeType: "OSHA", sectionNumber: "1926.95",
+    title: "PPE - Criteria for Personal Protective Equipment",
+    plainSummary: "Personal protective equipment for eyes, face, head, and extremities; protective clothing; respiratory devices; and protective shields and barriers shall be provided and used when required. PPE must be of safe design and construction for the work to be performed.",
+    tags: ["PPE", "personal protective equipment", "safety equipment"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.95"
+  },
+  {
+    id: "OSHA-1926.100", codeType: "OSHA", sectionNumber: "1926.100",
+    title: "Head Protection",
+    plainSummary: "Employees working in areas where there is a possible danger of head injury from impact, falling or flying objects, or electrical shock shall be protected by protective helmets. Helmets must meet ANSI Z89 standards.",
+    tags: ["PPE", "hard hat", "head protection", "ANSI"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.100"
+  },
+  {
+    id: "OSHA-1926.102", codeType: "OSHA", sectionNumber: "1926.102",
+    title: "Eye and Face Protection",
+    plainSummary: "Eye and face protection shall be provided when machines or operations present potential eye or face injury from physical, chemical, or radiation agents. Equipment must meet ANSI Z87.1 standards.",
+    tags: ["PPE", "eye protection", "face shield", "ANSI"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.102"
+  },
+  {
+    id: "OSHA-1926.150", codeType: "OSHA", sectionNumber: "1926.150",
+    title: "Fire Protection",
+    plainSummary: "A fire prevention program must be established before any construction operation. Firefighting equipment must be accessible and in operative condition. Workers must be familiar with alarm systems and evacuation procedures.",
+    tags: ["fire protection", "fire prevention", "fire extinguisher", "emergency"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.150"
+  },
+  {
+    id: "OSHA-1926.151", codeType: "OSHA", sectionNumber: "1926.151",
+    title: "Fire Prevention",
+    plainSummary: "Ignition hazards including welding, cutting, and grinding must be controlled. Flammable and combustible materials must be stored away from ignition sources. Fire lanes must be maintained for emergency vehicle access.",
+    tags: ["fire prevention", "flammable materials", "combustible", "hot work"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.151"
+  },
+  {
+    id: "OSHA-1926.200", codeType: "OSHA", sectionNumber: "1926.200",
+    title: "Accident Prevention Signs and Tags",
+    plainSummary: "Danger signs, caution signs, and exit signs must be used where required. Safety instruction signs shall be used where needed to warn against potential hazards or to instruct employees. Signs must conform to ANSI standards.",
+    tags: ["signs", "barricades", "safety signage", "warnings"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.200"
+  },
+  {
+    id: "OSHA-1926.400", codeType: "OSHA", sectionNumber: "1926.400",
+    title: "Electrical - General Requirements",
+    plainSummary: "Electrical equipment and installations must comply with applicable NFPA and NEC standards. All electrical work must be performed or supervised by qualified persons. Electrical hazards must be guarded to protect employees.",
+    tags: ["electrical", "NFPA", "NEC", "wiring"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.400"
+  },
+  {
+    id: "OSHA-1926.416", codeType: "OSHA", sectionNumber: "1926.416",
+    title: "General Electrical Safety - Working on or Near Energized Parts",
+    plainSummary: "Employees working near energized parts must be protected by insulation, barriers, or guarding. LOTO (lockout/tagout) procedures must be followed when de-energizing equipment. GFCIs or assured equipment grounding programs are required for outdoor and wet work.",
+    tags: ["electrical", "lockout/tagout", "GFCI", "energized"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.416"
+  },
+  {
+    id: "OSHA-1926.451", codeType: "OSHA", sectionNumber: "1926.451",
+    title: "Scaffolding - General Requirements",
+    plainSummary: "Scaffolds must support four times the intended maximum load. Guardrail systems and toeboards are required on all open sides and ends above 10 feet. A competent person must inspect scaffolds before each work shift and after any event that could affect scaffold integrity.",
+    tags: ["scaffolds", "fall protection", "competent person", "guardrails"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.451"
+  },
+  {
+    id: "OSHA-1926.452", codeType: "OSHA", sectionNumber: "1926.452",
+    title: "Scaffolding - Additional Requirements",
+    plainSummary: "Additional requirements apply to specific scaffold types including tube and coupler, fabricated frame, pump jack, ladder jack, and suspended scaffolds. Each type has specific erection, use, and dismantling requirements.",
+    tags: ["scaffolds", "tube and coupler", "suspended scaffold", "pump jack"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.452"
+  },
+  {
+    id: "OSHA-1926.500", codeType: "OSHA", sectionNumber: "1926.500",
+    title: "Fall Protection - Scope and Application",
+    plainSummary: "Fall protection provisions apply to all construction activities where workers are exposed to fall hazards. Employers must provide fall protection when workers are at heights of 6 feet or more above a lower level.",
+    tags: ["fall protection", "scope", "general"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.500"
+  },
+  {
+    id: "OSHA-1926.502", codeType: "OSHA", sectionNumber: "1926.502",
+    title: "Fall Protection Systems - Criteria and Practices",
+    plainSummary: "Guardrail systems must be capable of withstanding 200 lbs force. Safety net systems must be installed as close as practicable below working surfaces. Personal fall arrest systems must limit force on employees to 1,800 lbs and prevent free fall of more than 6 feet.",
+    tags: ["fall protection", "guardrails", "safety nets", "personal fall arrest", "PFAS"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.502"
+  },
+  {
+    id: "OSHA-1926.503", codeType: "OSHA", sectionNumber: "1926.503",
+    title: "Fall Protection Training Requirements",
+    plainSummary: "Employers must provide fall protection training to each employee who might be exposed to fall hazards. Training must include recognition of fall hazards and use of fall protection systems. Retraining is required when the employer believes the employee lacks the understanding or skill required.",
+    tags: ["fall protection", "training", "education"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.503"
+  },
+  {
+    id: "OSHA-1926.550", codeType: "OSHA", sectionNumber: "1926.550",
+    title: "Cranes and Derricks",
+    plainSummary: "Cranes must be inspected before use and documented daily. Rated load capacities must be visible from the operator's station. Employees must not be lifted by crane in equipment not designed for personnel. Outriggers must be fully deployed on proper pads.",
+    tags: ["cranes", "derricks", "hoisting", "operator"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.550"
+  },
+  {
+    id: "OSHA-1926.600", codeType: "OSHA", sectionNumber: "1926.600",
+    title: "Motor Vehicles and Mechanized Equipment",
+    plainSummary: "All vehicles in use shall be checked at the beginning of each shift for brakes, lights, horns, steering, and safety devices. Vehicles must not be operated with faulty equipment. Seat belts are required where rollover protection is provided.",
+    tags: ["vehicles", "forklifts", "equipment", "safety checks"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.600"
+  },
+  {
+    id: "OSHA-1926.650", codeType: "OSHA", sectionNumber: "1926.650",
+    title: "Excavations - Scope and Definitions",
+    plainSummary: "Excavation provisions apply to all open excavations made in the earth's surface, including trenches. A competent person must classify soil conditions before work begins and must inspect trenches daily and after rain events.",
+    tags: ["excavations", "trenches", "soil classification", "competent person"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.650"
+  },
+  {
+    id: "OSHA-1926.651", codeType: "OSHA", sectionNumber: "1926.651",
+    title: "Excavations - Specific Excavation Requirements",
+    plainSummary: "Surface encumbrances must be removed or supported before excavation. Employees must be protected from underground utilities. Means of egress must be provided at 25-foot intervals in trenches exceeding 4 feet in depth.",
+    tags: ["excavations", "utilities", "egress", "trenches"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.651"
+  },
+  {
+    id: "OSHA-1926.652", codeType: "OSHA", sectionNumber: "1926.652",
+    title: "Excavations - Requirements for Protective Systems",
+    plainSummary: "Employees in excavations deeper than 5 feet must be protected against cave-ins by sloping, shoring, or shielding systems. Systems must be designed by a registered professional engineer or conform to OSHA Appendix tables.",
+    tags: ["excavations", "shoring", "sloping", "shielding", "cave-in"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.652"
+  },
+  {
+    id: "OSHA-1926.1050", codeType: "OSHA", sectionNumber: "1926.1050",
+    title: "Stairways and Ladders - Scope",
+    plainSummary: "Stairways and ladders must be provided wherever there is a change in elevation of 19 inches or more and no ramp, runway, or embankment. All stairways and ladders used during construction must meet the requirements of this subpart.",
+    tags: ["ladders", "stairways", "access", "egress"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.1050"
+  },
+  {
+    id: "OSHA-1926.1053", codeType: "OSHA", sectionNumber: "1926.1053",
+    title: "Ladders - Requirements",
+    plainSummary: "Ladders must be capable of supporting the intended load. Extension ladders must extend at least 3 feet above the upper landing. Ladders must be positioned at a 4:1 angle. Metal ladders must not be used near electrical hazards.",
+    tags: ["ladders", "extension ladder", "angle", "electrical"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.1053"
+  },
+  {
+    id: "OSHA-1926.1400", codeType: "OSHA", sectionNumber: "1926.1400",
+    title: "Cranes and Derricks in Construction - Scope",
+    plainSummary: "This subpart applies to power-operated equipment used to hoist materials. Covers tower cranes, mobile cranes, derricks, and overhead hoists. Equipment operators must be certified and qualified for the specific equipment type.",
+    tags: ["cranes", "tower crane", "mobile crane", "operator certification"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.1400"
+  },
+  {
+    id: "OSHA-1926.1412", codeType: "OSHA", sectionNumber: "1926.1412",
+    title: "Cranes and Derricks - Inspections",
+    plainSummary: "Equipment must be inspected prior to each shift, monthly, and annually. The operator must visually inspect equipment for defects. Annual inspections must be performed by a qualified person and documented. Any defects affecting safe operation must be corrected before use.",
+    tags: ["cranes", "inspections", "pre-shift inspection", "documentation"],
+    officialUrl: "https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.1412"
+  },
 ];
 
 export const mockInspectionTemplates: InspectionTemplate[] = [
@@ -266,7 +441,12 @@ export const mockInspectionTemplates: InspectionTemplate[] = [
 ];
 
 export const mockInspections: Inspection[] = [
-  { id: "insp-1", organizationId: "org-1", jobsiteId: "job-1", templateId: "tpl-1", date: "2026-02-26", inspectorUserId: "user-1", status: "Submitted" },
+  {
+    id: "insp-1", organizationId: "org-1", jobsiteId: "job-1", templateId: "tpl-1", date: "2026-02-26", inspectorUserId: "user-1", status: "Submitted",
+    recipientName: "Michael Rodriguez", recipientTitle: "Project Manager", recipientCompany: "Turner Construction Company", recipientAddress: "375 Hudson St, New York, NY 10014",
+    scopeOfWork: "Structural steel and concrete work ongoing on floors 42–48. Tower crane operations active on south face. Sidewalk shed maintained along Vanderbilt Ave frontage. Active workforce approximately 180 workers across all trades.",
+    ccList: ["James Chen, SafeGuard NYC Consulting", "Anthony Ferraro, Turner Construction – Safety Director"],
+  },
   { id: "insp-2", organizationId: "org-1", jobsiteId: "job-1", templateId: "tpl-3", date: "2026-02-25", inspectorUserId: "user-3", status: "Submitted" },
   { id: "insp-3", organizationId: "org-1", jobsiteId: "job-2", templateId: "tpl-2", date: "2026-02-24", inspectorUserId: "user-4", status: "Draft" },
   { id: "insp-4", organizationId: "org-1", jobsiteId: "job-3", templateId: "tpl-1", date: "2026-02-26", inspectorUserId: "user-3", status: "Submitted" },
@@ -279,10 +459,11 @@ export const mockObservations: Observation[] = [
     createdAt: "2026-02-26T09:30:00Z", createdByUserId: "user-1",
     location: "Level 42, South elevation",
     description: "Missing guardrail on leading edge near column line D. Workers observed without tie-off at elevation.",
-    category: "Fall Protection", severity: "High", status: "Open",
+    category: "Fall Protection", type: "issue", severity: "High", status: "Open",
+    correctedOnSite: false,
     assignedTo: "Robert Kowalski", dueDate: "2026-02-27",
     photoUrls: [],
-    linkedCodeReferenceIds: ["BC-3314.1", "BC-3306.5"],
+    linkedCodeReferenceIds: ["BC-3314.1", "OSHA-1926.502"],
     recommendedActions: ["Install temporary guardrail system immediately.", "Ensure all workers at elevation have personal fall arrest systems."],
     source: "manual",
   },
@@ -291,11 +472,48 @@ export const mockObservations: Observation[] = [
     createdAt: "2026-02-26T10:15:00Z", createdByUserId: "user-1",
     location: "Ground floor, material staging area",
     description: "Debris accumulation blocking emergency egress path near stairwell B. Combustible materials improperly stored.",
-    category: "Housekeeping", severity: "Medium", status: "In progress",
+    category: "Housekeeping", type: "issue", severity: "Medium", status: "Corrected",
+    correctedOnSite: true,
     assignedTo: "James Chen",
     photoUrls: [],
-    linkedCodeReferenceIds: ["BC-3316.1"],
+    linkedCodeReferenceIds: ["BC-3316.1", "OSHA-1926.25"],
     recommendedActions: ["Clear debris from egress path.", "Relocate combustible materials to designated storage area."],
+    source: "manual",
+  },
+  {
+    id: "obs-p1", organizationId: "org-1", inspectionId: "insp-1", jobsiteId: "job-1",
+    createdAt: "2026-02-26T09:00:00Z", createdByUserId: "user-1",
+    location: "All active floors",
+    description: "All workers observed wearing hard hats and high-visibility vests in required areas.",
+    category: "PPE", type: "positive", severity: "Low", status: "Verified",
+    correctedOnSite: false,
+    photoUrls: [],
+    linkedCodeReferenceIds: ["OSHA-1926.100"],
+    recommendedActions: [],
+    source: "manual",
+  },
+  {
+    id: "obs-p2", organizationId: "org-1", inspectionId: "insp-1", jobsiteId: "job-1",
+    createdAt: "2026-02-26T09:10:00Z", createdByUserId: "user-1",
+    location: "Scaffold bay 1–11, West elevation",
+    description: "Scaffold guardrails and toeboards properly installed and in good condition at all inspected bays.",
+    category: "Scaffolds", type: "positive", severity: "Low", status: "Verified",
+    correctedOnSite: false,
+    photoUrls: [],
+    linkedCodeReferenceIds: ["BC-3306.5", "OSHA-1926.451"],
+    recommendedActions: [],
+    source: "manual",
+  },
+  {
+    id: "obs-p3", organizationId: "org-1", inspectionId: "insp-1", jobsiteId: "job-1",
+    createdAt: "2026-02-26T09:15:00Z", createdByUserId: "user-1",
+    location: "Site perimeter, Vanderbilt Ave frontage",
+    description: "Sidewalk shed maintained in good condition with all lighting functional. No gaps or structural deficiencies observed.",
+    category: "Public Protection", type: "positive", severity: "Low", status: "Verified",
+    correctedOnSite: false,
+    photoUrls: [],
+    linkedCodeReferenceIds: ["BC-3303.1"],
+    recommendedActions: [],
     source: "manual",
   },
   {
@@ -303,7 +521,8 @@ export const mockObservations: Observation[] = [
     createdAt: "2026-02-25T14:00:00Z", createdByUserId: "user-3",
     location: "West elevation, scaffold bay 12-16",
     description: "Scaffold planking not fully decked. Gaps exceeding 1 inch between planks at multiple locations.",
-    category: "Scaffolds", severity: "High", status: "Corrected",
+    category: "Scaffolds", type: "issue", severity: "High", status: "Corrected",
+    correctedOnSite: false,
     assignedTo: "Robert Kowalski",
     photoUrls: [],
     linkedCodeReferenceIds: ["BC-3306.1", "BC-3306.5"],
@@ -315,7 +534,8 @@ export const mockObservations: Observation[] = [
     createdAt: "2026-02-24T08:45:00Z", createdByUserId: "user-4",
     location: "Perimeter, West 33rd Street side",
     description: "Sidewalk shed lighting non-functional in two sections. Pedestrian visibility compromised during evening hours.",
-    category: "Public Protection", severity: "Medium", status: "Open",
+    category: "Public Protection", type: "issue", severity: "Medium", status: "Open",
+    correctedOnSite: false,
     photoUrls: [],
     linkedCodeReferenceIds: ["BC-3303.1", "BC-3301.9"],
     recommendedActions: ["Replace non-functional lighting fixtures.", "Verify all sidewalk shed lighting is operational before end of shift."],
@@ -326,7 +546,8 @@ export const mockObservations: Observation[] = [
     createdAt: "2026-02-26T11:00:00Z", createdByUserId: "user-3",
     location: "Lobby area, floor 1",
     description: "Fire extinguisher past inspection date. Safety data sheets not posted at chemical storage location.",
-    category: "Administrative", severity: "Low", status: "Open",
+    category: "Administrative", type: "issue", severity: "Low", status: "Open",
+    correctedOnSite: false,
     photoUrls: [],
     linkedCodeReferenceIds: ["BC-3311.3"],
     recommendedActions: ["Replace or re-certify expired fire extinguishers.", "Post current SDS at all chemical storage locations."],

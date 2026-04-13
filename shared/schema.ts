@@ -45,7 +45,7 @@ export interface Jobsite {
 
 export interface CodeReference {
   id: string;
-  codeType: "BC" | "AC";
+  codeType: "BC" | "AC" | "OSHA";
   chapter?: number;
   sectionNumber: string;
   title: string;
@@ -70,6 +70,12 @@ export interface Inspection {
   date: string;
   inspectorUserId: string;
   status: "Draft" | "Submitted";
+  scopeOfWork?: string;
+  ccList?: string[];
+  recipientName?: string;
+  recipientTitle?: string;
+  recipientCompany?: string;
+  recipientAddress?: string;
 }
 
 export interface AiFinding {
@@ -89,8 +95,10 @@ export interface Observation {
   location: string;
   description: string;
   category: string;
+  type: "issue" | "positive";
   severity: "Low" | "Medium" | "High";
   status: "Open" | "In progress" | "Corrected" | "Verified";
+  correctedOnSite?: boolean;
   assignedTo?: string;
   dueDate?: string;
   photoUrls: string[];
@@ -166,14 +174,25 @@ export const insertInspectionSchema = z.object({
   date: z.string().min(1, "Date is required"),
 });
 
+export const updateInspectionReportSchema = z.object({
+  scopeOfWork: z.string().optional(),
+  ccList: z.array(z.string()).optional(),
+  recipientName: z.string().optional(),
+  recipientTitle: z.string().optional(),
+  recipientCompany: z.string().optional(),
+  recipientAddress: z.string().optional(),
+});
+
 export const insertObservationSchema = z.object({
   inspectionId: z.string().min(1),
   jobsiteId: z.string().min(1),
   location: z.string().min(1, "Location is required"),
   description: z.string().min(1, "Description is required"),
   category: z.string().min(1, "Category is required"),
-  severity: z.enum(["Low", "Medium", "High"]),
+  type: z.enum(["issue", "positive"]).default("issue"),
+  severity: z.enum(["Low", "Medium", "High"]).default("Low"),
   status: z.enum(["Open", "In progress", "Corrected", "Verified"]).default("Open"),
+  correctedOnSite: z.boolean().default(false),
   assignedTo: z.string().optional(),
   dueDate: z.string().optional(),
   photoUrls: z.array(z.string()).default([]),
@@ -279,6 +298,7 @@ export const insertTimesheetEntrySchema = z.object({
 export type InsertClient = z.infer<typeof insertClientSchema>;
 export type InsertJobsite = z.infer<typeof insertJobsiteSchema>;
 export type InsertInspection = z.infer<typeof insertInspectionSchema>;
+export type UpdateInspectionReport = z.infer<typeof updateInspectionReportSchema>;
 export type InsertObservation = z.infer<typeof insertObservationSchema>;
 export type InsertEmployeeProfile = z.infer<typeof insertEmployeeProfileSchema>;
 export type InsertScheduleEntry = z.infer<typeof insertScheduleEntrySchema>;

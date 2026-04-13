@@ -4,7 +4,8 @@ import type {
   JobsitePermit, JobsiteExternalEvent,
   EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry,
   InsertClient, InsertJobsite, InsertInspection, InsertObservation,
-  InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry
+  InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry,
+  UpdateInspectionReport
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import {
@@ -42,6 +43,7 @@ export interface IStorage {
   getInspection(id: string): Inspection | undefined;
   createInspection(orgId: string, inspectorUserId: string, data: InsertInspection): Inspection;
   updateInspectionStatus(id: string, status: "Draft" | "Submitted"): Inspection | undefined;
+  updateInspection(id: string, updates: UpdateInspectionReport): Inspection | undefined;
 
   getObservationsByInspection(inspectionId: string): Observation[];
   getObservationsByOrg(orgId: string): Observation[];
@@ -210,6 +212,18 @@ export class MemStorage implements IStorage {
     const insp = this.inspections.get(id);
     if (!insp) return undefined;
     insp.status = status;
+    return insp;
+  }
+
+  updateInspection(id: string, updates: UpdateInspectionReport): Inspection | undefined {
+    const insp = this.inspections.get(id);
+    if (!insp) return undefined;
+    if (updates.scopeOfWork !== undefined) insp.scopeOfWork = updates.scopeOfWork;
+    if (updates.ccList !== undefined) insp.ccList = updates.ccList;
+    if (updates.recipientName !== undefined) insp.recipientName = updates.recipientName;
+    if (updates.recipientTitle !== undefined) insp.recipientTitle = updates.recipientTitle;
+    if (updates.recipientCompany !== undefined) insp.recipientCompany = updates.recipientCompany;
+    if (updates.recipientAddress !== undefined) insp.recipientAddress = updates.recipientAddress;
     return insp;
   }
 

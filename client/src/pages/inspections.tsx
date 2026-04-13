@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation, Link } from "wouter";
 import type {
   Inspection, InspectionTemplate, Jobsite, User, Observation,
-  CodeReference, Client, AiFinding
+  CodeReference, Client, AiFinding, EmployeeProfile, Organization
 } from "@shared/schema";
 import { insertObservationSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,12 +26,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Disclaimer } from "@/components/disclaimer";
 import PhotoAnnotator from "@/components/photo-annotator";
 import { exportObservationPDF } from "@/lib/export-observation";
+import { exportInspectionReportPDF } from "@/lib/export-inspection-report";
 import {
   ArrowLeft, Plus, Search, ClipboardCheck,
   Calendar, MapPin, User as UserIcon, ChevronRight,
   AlertTriangle, CheckCircle2, Clock, XCircle,
   Link2, X, Camera, Sparkles, Upload, ImageIcon, Loader2,
-  Pencil, Download, ZoomIn
+  Pencil, Download, ZoomIn, FileText, ShieldCheck
 } from "lucide-react";
 
 const severityColors: Record<string, string> = {
@@ -676,8 +677,10 @@ function AddObservationForm({
       location: "",
       description: "",
       category: "Fall Protection",
+      type: "issue" as const,
       severity: "Medium" as const,
       status: "Open" as const,
+      correctedOnSite: false,
       assignedTo: "",
       dueDate: "",
       photoUrls: [] as string[],
@@ -687,6 +690,8 @@ function AddObservationForm({
       source: "manual" as const,
     },
   });
+
+  const observationType = form.watch("type");
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -712,7 +717,8 @@ function AddObservationForm({
 
   const categories = [
     "Fall Protection", "Housekeeping", "Scaffolds", "Public Protection",
-    "Administrative", "Cranes", "Hoists", "Excavations", "Fire Safety"
+    "Administrative", "Cranes", "Hoists", "Excavations", "Fire Safety",
+    "Electrical", "PPE", "Ladders", "Signage"
   ];
 
   return (
@@ -722,6 +728,46 @@ function AddObservationForm({
       </DialogHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit((d) => createMutation.mutate(d))} className="space-y-4">
+          <FormField control={form.control} name="type" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Finding Type</FormLabel>
+              <div className="flex gap-2" data-testid="toggle-obs-type">
+                <Button
+                  type="button"
+                  variant={field.value === "issue" ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => {
+                    field.onChange("issue");
+                    form.setValue("status", "Open");
+                    form.setValue("severity", "Medium");
+                  }}
+                  data-testid="button-type-issue"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 mr-1.5" /> Issue
+                </Button>
+                <Button
+                  type="button"
+                  variant={field.value === "positive" ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => {
+                    field.onChange("positive");
+                    form.setValue("status", "Verified");
+                    form.setValue("severity", "Low");
+                    form.setValue("correctedOnSite", false);
+                  }}
+                  data-testid="button-type-positive"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5 mr-1.5" /> Positive Finding
+                </Button>
+              </div>
+              {observationType === "positive" && (
+                <p className="text-xs text-muted-foreground">Positive findings confirm compliance — they appear as green checkmarks in the full report.</p>
+              )}
+            </FormItem>
+          )} />
+
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField control={form.control} name="location" render={({ field }) => (
               <FormItem>
@@ -752,54 +798,77 @@ function AddObservationForm({
 
           <FormField control={form.control} name="description" render={({ field }) => (
             <FormItem>
-              <FormLabel>Description</FormLabel>
-              <FormControl><Textarea placeholder="Describe the observation..." {...field} data-testid="input-obs-description" /></FormControl>
+              <FormLabel>{observationType === "positive" ? "What was found compliant?" : "Description"}</FormLabel>
+              <FormControl><Textarea placeholder={observationType === "positive" ? "e.g., All workers wearing proper PPE in required areas." : "Describe the observation..."} {...field} data-testid="input-obs-description" /></FormControl>
               <FormMessage />
             </FormItem>
           )} />
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <FormField control={form.control} name="severity" render={({ field }) => (
+          {observationType === "issue" && (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <FormField control={form.control} name="severity" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Severity</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-obs-severity">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="Low">Low</SelectItem>
+                      <SelectItem value="Medium">Medium</SelectItem>
+                      <SelectItem value="High">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="assignedTo" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Assigned To</FormLabel>
+                  <FormControl><Input placeholder="Name or ID" {...field} data-testid="input-obs-assigned" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="dueDate" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Due Date</FormLabel>
+                  <FormControl><Input type="date" {...field} data-testid="input-obs-due-date" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+          )}
+
+          {observationType === "issue" && (
+            <FormField control={form.control} name="correctedOnSite" render={({ field }) => (
               <FormItem>
-                <FormLabel>Severity</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <div className="flex items-center gap-2">
                   <FormControl>
-                    <SelectTrigger data-testid="select-obs-severity">
-                      <SelectValue />
-                    </SelectTrigger>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      data-testid="checkbox-corrected-on-site"
+                    />
                   </FormControl>
-                  <SelectContent>
-                    <SelectItem value="Low">Low</SelectItem>
-                    <SelectItem value="Medium">Medium</SelectItem>
-                    <SelectItem value="High">High</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FormMessage />
+                  <FormLabel className="cursor-pointer font-normal">
+                    Corrected on site — issue was fixed immediately during this inspection visit
+                  </FormLabel>
+                </div>
               </FormItem>
             )} />
-            <FormField control={form.control} name="assignedTo" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Assigned To</FormLabel>
-                <FormControl><Input placeholder="Name or ID" {...field} data-testid="input-obs-assigned" /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-            <FormField control={form.control} name="dueDate" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Due Date</FormLabel>
-                <FormControl><Input type="date" {...field} data-testid="input-obs-due-date" /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-          </div>
+          )}
 
-          <FormField control={form.control} name="recommendedAction" render={({ field }) => (
-            <FormItem>
-              <FormLabel>Recommended Action</FormLabel>
-              <FormControl><Input placeholder="Corrective action to take..." {...field} data-testid="input-obs-action" /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
+          {observationType === "issue" && (
+            <FormField control={form.control} name="recommendedAction" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Recommended Action</FormLabel>
+                <FormControl><Input placeholder="Corrective action to take..." {...field} data-testid="input-obs-action" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+          )}
 
           <div>
             <p className="text-sm font-medium mb-2">Photos</p>
@@ -885,10 +954,113 @@ function AddObservationForm({
   );
 }
 
+function ReportDetailsDialog({
+  inspection,
+  onClose,
+}: {
+  inspection: Inspection;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [ccText, setCcText] = useState((inspection.ccList ?? []).join("\n"));
+
+  const form = useForm({
+    defaultValues: {
+      recipientName: inspection.recipientName ?? "",
+      recipientTitle: inspection.recipientTitle ?? "",
+      recipientCompany: inspection.recipientCompany ?? "",
+      recipientAddress: inspection.recipientAddress ?? "",
+      scopeOfWork: inspection.scopeOfWork ?? "",
+    },
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (values: Record<string, string>) => {
+      const ccList = ccText.split("\n").map(s => s.trim()).filter(Boolean);
+      const res = await apiRequest("PATCH", `/api/inspections/${inspection.id}/report-details`, {
+        ...values,
+        ccList,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/inspections", inspection.id] });
+      toast({ title: "Report details saved" });
+      onClose();
+    },
+    onError: () => {
+      toast({ title: "Error saving details", variant: "destructive" });
+    },
+  });
+
+  return (
+    <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>Report Details</DialogTitle>
+      </DialogHeader>
+      <form onSubmit={form.handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
+        <div>
+          <p className="text-sm font-semibold mb-3">Report Recipient</p>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium">Name</label>
+              <Input {...form.register("recipientName")} placeholder="e.g., Michael Rodriguez" className="mt-1" data-testid="input-recipient-name" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Title</label>
+                <Input {...form.register("recipientTitle")} placeholder="e.g., Project Manager" className="mt-1" data-testid="input-recipient-title" />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Company</label>
+                <Input {...form.register("recipientCompany")} placeholder="e.g., Turner Construction" className="mt-1" data-testid="input-recipient-company" />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Address</label>
+              <Input {...form.register("recipientAddress")} placeholder="e.g., 375 Hudson St, New York, NY 10014" className="mt-1" data-testid="input-recipient-address" />
+            </div>
+          </div>
+        </div>
+
+        <Separator />
+
+        <div>
+          <label className="text-sm font-medium">Scope of Work</label>
+          <Textarea
+            {...form.register("scopeOfWork")}
+            placeholder="Describe the work activities being performed on site during this inspection..."
+            className="mt-1 min-h-[80px]"
+            data-testid="input-scope-of-work"
+          />
+        </div>
+
+        <div>
+          <label className="text-sm font-medium">CC List</label>
+          <p className="text-xs text-muted-foreground mb-1">One entry per line (e.g., "James Chen, SafeGuard NYC")</p>
+          <Textarea
+            value={ccText}
+            onChange={e => setCcText(e.target.value)}
+            placeholder={"James Chen, SafeGuard NYC Consulting\nAnthony Ferraro, Turner Construction – Safety Director"}
+            className="min-h-[70px]"
+            data-testid="input-cc-list"
+          />
+        </div>
+
+        <Button type="submit" className="w-full" disabled={mutation.isPending} data-testid="button-save-report-details">
+          {mutation.isPending ? "Saving..." : "Save Report Details"}
+        </Button>
+      </form>
+    </DialogContent>
+  );
+}
+
 function InspectionDetail({ id }: { id: string }) {
   const [showAddObs, setShowAddObs] = useState(false);
   const [showAiDialog, setShowAiDialog] = useState(false);
+  const [showReportDetails, setShowReportDetails] = useState(false);
   const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null);
+  const [exportingReport, setExportingReport] = useState(false);
   const { toast } = useToast();
 
   const { data: inspection, isLoading } = useQuery<Inspection>({
@@ -901,6 +1073,9 @@ function InspectionDetail({ id }: { id: string }) {
   const { data: templates } = useQuery<InspectionTemplate[]>({ queryKey: ["/api/templates"] });
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
   const { data: codeRefs } = useQuery<CodeReference[]>({ queryKey: ["/api/code-references"] });
+  const { data: employees } = useQuery<EmployeeProfile[]>({ queryKey: ["/api/employees"] });
+  const { data: clients } = useQuery<Client[]>({ queryKey: ["/api/clients"] });
+  const { data: me } = useQuery<{ user: User; organization: Organization }>({ queryKey: ["/api/me"] });
 
   const codeRefMap = new Map(codeRefs?.map(r => [r.id, r]) ?? []);
 
@@ -940,8 +1115,41 @@ function InspectionDetail({ id }: { id: string }) {
   const jobsite = jobsites?.find(j => j.id === inspection.jobsiteId);
   const template = templates?.find(t => t.id === inspection.templateId);
   const inspector = users?.find(u => u.id === inspection.inspectorUserId);
+  const client = clients?.find(c => c.id === jobsite?.clientId);
+  const inspectorEmployee = employees?.find(e => e.userId === inspection.inspectorUserId);
 
   const obsStatuses = ["Open", "In progress", "Corrected", "Verified"];
+
+  const totalObs = observations?.length ?? 0;
+  const positiveObs = observations?.filter(o => o.type === "positive").length ?? 0;
+  const score = totalObs > 0 ? Math.round((positiveObs / totalObs) * 1000) / 10 : null;
+  const scoreColor = score === null ? "secondary" :
+    score >= 80 ? "default" : score >= 60 ? "secondary" : "destructive";
+
+  const handleExportReport = async () => {
+    if (!jobsite || !inspector || !me) return;
+    if (!client) {
+      toast({ title: "Client data not loaded yet, please try again.", variant: "destructive" });
+      return;
+    }
+    setExportingReport(true);
+    try {
+      await exportInspectionReportPDF(
+        inspection,
+        observations ?? [],
+        jobsite,
+        client,
+        inspector,
+        codeRefMap,
+        me.organization,
+        inspectorEmployee,
+      );
+    } catch (e) {
+      toast({ title: "Error generating report", variant: "destructive" });
+    } finally {
+      setExportingReport(false);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -959,7 +1167,23 @@ function InspectionDetail({ id }: { id: string }) {
               </h1>
               <p className="text-sm text-muted-foreground">{jobsite?.name}</p>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+              {score !== null && (
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Badge
+                      variant={scoreColor}
+                      className="text-sm px-3 py-1 cursor-default"
+                      data-testid="badge-inspection-score"
+                    >
+                      {score}%
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">{positiveObs} of {totalObs} items compliant</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
               <Badge variant={inspection.status === "Submitted" ? "default" : "secondary"}>
                 {inspection.status}
               </Badge>
@@ -973,6 +1197,20 @@ function InspectionDetail({ id }: { id: string }) {
                   Submit
                 </Button>
               )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleExportReport}
+                disabled={exportingReport || !jobsite || !inspector || !client}
+                data-testid="button-export-full-report"
+              >
+                {exportingReport ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4 mr-2" />
+                )}
+                Export Report
+              </Button>
             </div>
           </div>
 
@@ -995,9 +1233,61 @@ function InspectionDetail({ id }: { id: string }) {
             </CardContent>
           </Card>
 
+          <Card data-testid="card-report-details">
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm font-medium">Report Details</span>
+                  </div>
+                  {inspection.recipientName ? (
+                    <div className="text-sm text-muted-foreground space-y-0.5">
+                      <p>
+                        <span className="font-medium text-foreground">{inspection.recipientName}</span>
+                        {inspection.recipientTitle && `, ${inspection.recipientTitle}`}
+                        {inspection.recipientCompany && ` — ${inspection.recipientCompany}`}
+                      </p>
+                      {inspection.recipientAddress && <p className="text-xs">{inspection.recipientAddress}</p>}
+                      {inspection.ccList && inspection.ccList.length > 0 && (
+                        <p className="text-xs">CC: {inspection.ccList.join(", ")}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No recipient set — add details to personalize the exported report.</p>
+                  )}
+                  {inspection.scopeOfWork && (
+                    <p className="text-xs text-muted-foreground border-t pt-2 mt-2 line-clamp-2">{inspection.scopeOfWork}</p>
+                  )}
+                </div>
+                <Dialog open={showReportDetails} onOpenChange={setShowReportDetails}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowReportDetails(true)}
+                    data-testid="button-edit-report-details"
+                  >
+                    <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
+                  </Button>
+                  {showReportDetails && (
+                    <ReportDetailsDialog
+                      inspection={inspection}
+                      onClose={() => setShowReportDetails(false)}
+                    />
+                  )}
+                </Dialog>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-lg font-semibold" data-testid="text-observations-header">
               Observations ({observations?.length ?? 0})
+              {score !== null && (
+                <span className="text-base font-normal text-muted-foreground ml-2">
+                  · {positiveObs} compliant / {(observations?.length ?? 0) - positiveObs} issues
+                </span>
+              )}
             </h2>
             <div className="flex items-center gap-2">
               <Dialog open={showAiDialog} onOpenChange={setShowAiDialog}>
@@ -1035,17 +1325,33 @@ function InspectionDetail({ id }: { id: string }) {
           ) : (
             <div className="space-y-4">
               {observations.map(obs => {
+                const isPositive = obs.type === "positive";
                 const StatusIcon = statusIcons[obs.status] ?? AlertTriangle;
                 return (
-                  <Card key={obs.id} data-testid={`card-observation-${obs.id}`}>
+                  <Card
+                    key={obs.id}
+                    className={isPositive ? "border-green-200 dark:border-green-800/50" : ""}
+                    data-testid={`card-observation-${obs.id}`}
+                  >
                     <CardContent className="p-4 space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <Badge className={severityColors[obs.severity] ?? ""} variant="secondary">
-                              {obs.severity}
-                            </Badge>
+                            {isPositive ? (
+                              <Badge className="bg-green-500/15 text-green-700 dark:text-green-400" variant="secondary" data-testid={`badge-positive-${obs.id}`}>
+                                <ShieldCheck className="h-3 w-3 mr-1" /> Positive Finding
+                              </Badge>
+                            ) : (
+                              <Badge className={severityColors[obs.severity] ?? ""} variant="secondary">
+                                {obs.severity}
+                              </Badge>
+                            )}
                             <Badge variant="secondary">{obs.category}</Badge>
+                            {obs.correctedOnSite && (
+                              <Badge className="bg-green-500/15 text-green-700 dark:text-green-400" variant="secondary" data-testid={`badge-corrected-site-${obs.id}`}>
+                                <CheckCircle2 className="h-3 w-3 mr-1" /> Corrected on site
+                              </Badge>
+                            )}
                             {obs.source === "ai" && (
                               <Badge className="bg-purple-500/15 text-purple-700 dark:text-purple-400" variant="secondary" data-testid={`badge-ai-${obs.id}`}>
                                 <Sparkles className="h-3 w-3 mr-1" /> AI
@@ -1055,6 +1361,7 @@ function InspectionDetail({ id }: { id: string }) {
                           </div>
                           <p className="text-sm mt-2">{obs.description}</p>
                         </div>
+                        {!isPositive && (
                         <Select
                           value={obs.status}
                           onValueChange={(val) => obsStatusMutation.mutate({ obsId: obs.id, status: val })}
@@ -1071,6 +1378,7 @@ function InspectionDetail({ id }: { id: string }) {
                             ))}
                           </SelectContent>
                         </Select>
+                        )}
                       </div>
 
                       {obs.recommendedActions.length > 0 && (

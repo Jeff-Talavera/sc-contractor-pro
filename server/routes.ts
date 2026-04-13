@@ -3,7 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import {
   insertClientSchema, insertJobsiteSchema, insertInspectionSchema, insertObservationSchema,
-  insertEmployeeProfileSchema, insertScheduleEntrySchema, insertTimesheetSchema, insertTimesheetEntrySchema
+  insertEmployeeProfileSchema, insertScheduleEntrySchema, insertTimesheetSchema, insertTimesheetEntrySchema,
+  updateInspectionReportSchema
 } from "@shared/schema";
 import type { AiFinding, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
@@ -112,6 +113,17 @@ export async function registerRoutes(
     }
     const updated = storage.updateInspectionStatus(req.params.id, status);
     if (!updated) return res.status(404).json({ message: "Inspection not found" });
+    res.json(updated);
+  });
+
+  app.patch("/api/inspections/:id/report-details", (req, res) => {
+    const parsed = updateInspectionReportSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const insp = storage.getInspection(req.params.id);
+    if (!insp) return res.status(404).json({ message: "Inspection not found" });
+    const user = storage.getCurrentUser();
+    if (insp.organizationId !== user.organizationId) return res.status(403).json({ message: "Forbidden" });
+    const updated = storage.updateInspection(req.params.id, parsed.data);
     res.json(updated);
   });
 
