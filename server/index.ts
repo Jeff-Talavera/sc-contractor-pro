@@ -60,7 +60,19 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Run seed on startup (no-op if already seeded)
+  // Verify database connectivity and schema before accepting traffic
+  try {
+    const { pool } = await import("./db");
+    await pool.query("SELECT 1 FROM organizations LIMIT 1");
+  } catch (err) {
+    console.error(
+      "Database not ready. Run `npx drizzle-kit push` to apply the schema, then restart.",
+      err
+    );
+    process.exit(1);
+  }
+
+  // Seed on startup (no-op if already seeded)
   try {
     const { seed } = await import("./seed");
     await seed();

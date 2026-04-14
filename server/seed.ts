@@ -77,7 +77,7 @@ export async function seed() {
       jobsiteId: insp.jobsiteId, templateId: insp.templateId,
       date: insp.date, inspectorUserId: insp.inspectorUserId, status: insp.status,
       scopeOfWork: insp.scopeOfWork ?? null,
-      ccList: (insp.ccList ?? null) as any,
+      ccList: insp.ccList ?? null,
       recipientName: insp.recipientName ?? null,
       recipientTitle: insp.recipientTitle ?? null,
       recipientCompany: insp.recipientCompany ?? null,
@@ -96,7 +96,7 @@ export async function seed() {
       assignedTo: obs.assignedTo ?? null, dueDate: obs.dueDate ?? null,
       photoUrls: obs.photoUrls, linkedCodeReferenceIds: obs.linkedCodeReferenceIds,
       recommendedActions: obs.recommendedActions,
-      source: obs.source, aiFindings: (obs.aiFindings ?? null) as any,
+      source: obs.source, aiFindings: obs.aiFindings ?? null,
     }).onConflictDoNothing();
   }
 

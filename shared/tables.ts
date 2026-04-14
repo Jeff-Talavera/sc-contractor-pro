@@ -1,6 +1,7 @@
 import {
-  pgTable, text, integer, boolean, real, json, timestamp
+  pgTable, text, integer, boolean, real, json
 } from "drizzle-orm/pg-core";
+import type { AiFinding } from "./schema";
 
 export const organizations = pgTable("organizations", {
   id: text("id").primaryKey(),
@@ -102,7 +103,7 @@ export const observations = pgTable("observations", {
   linkedCodeReferenceIds: json("linked_code_reference_ids").notNull().$type<string[]>(),
   recommendedActions: json("recommended_actions").notNull().$type<string[]>(),
   source: text("source").notNull(),
-  aiFindings: json("ai_findings").$type<any[]>(),
+  aiFindings: json("ai_findings").$type<AiFinding[]>(),
 });
 
 export const jobsitePermits = pgTable("jobsite_permits", {
