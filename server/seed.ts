@@ -243,9 +243,14 @@ export async function seedPasswords() {
 const SUPER_ADMIN_ORG_ID = "org-system";
 const SUPER_ADMIN_USER_ID = "user-superadmin";
 const SUPER_ADMIN_EMAIL = "admin@safetyconnect.app";
-const SUPER_ADMIN_DEFAULT_PASSWORD = "SafeSiteAdmin2024!";
 
 export async function seedSuperAdmin() {
+  const bootstrapPassword = process.env.SUPER_ADMIN_BOOTSTRAP_PASSWORD;
+  if (!bootstrapPassword) {
+    console.log("SUPER_ADMIN_BOOTSTRAP_PASSWORD not set — skipping super-admin bootstrap seeding.");
+    return;
+  }
+
   const existing = await db.select().from(t.users)
     .where(and(eq(t.users.id, SUPER_ADMIN_USER_ID), eq(t.users.isSuperAdmin, true)))
     .limit(1);
@@ -260,7 +265,7 @@ export async function seedSuperAdmin() {
     createdAt: new Date().toISOString(),
   }).onConflictDoNothing();
 
-  const hash = await bcrypt.hash(SUPER_ADMIN_DEFAULT_PASSWORD, 10);
+  const hash = await bcrypt.hash(bootstrapPassword, 10);
   await db.insert(t.users).values({
     id: SUPER_ADMIN_USER_ID,
     organizationId: SUPER_ADMIN_ORG_ID,
@@ -272,5 +277,5 @@ export async function seedSuperAdmin() {
     userStatus: "active",
   }).onConflictDoNothing();
 
-  console.log(`Super-admin seeded: ${SUPER_ADMIN_EMAIL} / ${SUPER_ADMIN_DEFAULT_PASSWORD}`);
+  console.log(`Super-admin account seeded for ${SUPER_ADMIN_EMAIL}.`);
 }

@@ -55,14 +55,15 @@ Multi-firm construction safety application for safety consulting firms (2-10 ins
 - Flag: `users.isSuperAdmin = true` (plus `users.userStatus`)
 - Super-admin login routes to `/admin` (separate portal, never sees regular app)
 - Regular firm users attempting `/admin` are redirected to `/`
-- Seeded super-admin: `admin@safetyconnect.app` / `SafeSiteAdmin2024!`
+- Seeded via `seedSuperAdmin()` at startup — requires `SUPER_ADMIN_BOOTSTRAP_PASSWORD` secret; skips if unset
+- Login: `admin@safetyconnect.app` (password is the value of `SUPER_ADMIN_BOOTSTRAP_PASSWORD` secret)
 
-### Firm Seeded Users (all password: `SafeSite2024!`)
+### Firm Seeded Users (all password: stored in `SEED_USER_PASSWORD` / set during initial data seed)
 - `maria@safeguardnyc.com` — Owner, SafeGuard NYC (org-1) ← primary test login
 - `james@safeguardnyc.com`, `priya@safeguardnyc.com` — additional org-1 users
 
 ### Admin Portal (`/admin`)
-- **Analytics** — platform-wide counts: firms, users, clients, jobsites, inspections, safety reports
+- **Analytics** — platform-wide counts: firms, users, new firms (30d), inspections, safety reports
 - **Firms** — list all orgs; create new org + owner account; suspend/activate firms
 - **Firm Detail** — Users tab: add/edit/deactivate users, reset passwords; Support View tab: read-only browse of firm's clients/jobsites/inspections
 - API routes: all under `/api/admin/*` — protected by `requireSuperAdmin` middleware
