@@ -70,7 +70,11 @@ app.use((req, res, next) => {
     // Configure session store using same pool
     const sessionSecret = process.env.SESSION_SECRET;
     if (!sessionSecret) {
-      console.error("SESSION_SECRET environment variable is not set — sessions will not be secure");
+      if (process.env.NODE_ENV === "production") {
+        console.error("FATAL: SESSION_SECRET environment variable must be set in production");
+        process.exit(1);
+      }
+      console.warn("SESSION_SECRET not set — using insecure dev fallback");
     }
     const PgStore = connectPgSimple(session);
     app.use(

@@ -56,7 +56,11 @@ function TopNav() {
     : "?";
 
   async function handleLogout() {
-    await apiRequest("POST", "/api/auth/logout");
+    try {
+      await apiRequest("POST", "/api/auth/logout");
+    } catch {
+      // Session may have already expired — navigate to login regardless
+    }
     queryClient.clear();
     navigate("/login");
   }

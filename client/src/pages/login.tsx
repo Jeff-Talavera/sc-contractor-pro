@@ -30,12 +30,21 @@ export default function LoginPage() {
     setServerError(null);
     try {
       await apiRequest("POST", "/api/auth/login", values);
-      await queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+      queryClient.removeQueries({ queryKey: ["/api/me"] });
       navigate("/");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "";
-      const match = msg.match(/^\d+: (.+)$/);
-      setServerError(match ? match[1] : "Something went wrong. Please try again.");
+      const raw = err instanceof Error ? err.message : "";
+      const match = raw.match(/^\d+:\s*(.+)$/);
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1]) as { message?: string };
+          setServerError(parsed.message ?? "Something went wrong. Please try again.");
+        } catch {
+          setServerError(match[1]);
+        }
+      } else {
+        setServerError("Something went wrong. Please try again.");
+      }
     }
   }
 
