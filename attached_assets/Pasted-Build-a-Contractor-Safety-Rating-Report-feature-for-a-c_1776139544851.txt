@@ -1,0 +1,38 @@
+Build a Contractor Safety Rating Report feature for a construction safety app.
+Feature Overview:
+Each contractor in the system should have a dedicated Safety Performance Dashboard that generates a weekly or monthly Safety Rating Report. The report uses a 0–100 scoring model with a letter grade (A = 90–100, B = 75–89, C = 60–74, D = below 60) to assess both current performance and predict future risk.
+Data Entry Points (inputs the user logs per contractor per period):
+Lagging Indicators (35% of score):
+	•	TRIR (Total Recordable Incident Rate) — auto-calculated from incidents and manhours
+	•	DART Rate — auto-calculated
+	•	LTIR (Lost Time Injury Rate)
+	•	EMR (Experience Modification Rate) — manually entered, annual
+	•	Number of OSHA citations in period (with severity: willful, serious, other)
+	•	Open workers’ comp claims count
+Leading Indicators (65% of score):
+	•	Inspections completed / inspections scheduled (ratio)
+	•	Corrective actions closed / corrective actions opened (closure rate)
+	•	Average corrective action close time in days
+	•	Near-miss reports submitted
+	•	Toolbox talks completed / scheduled (ratio)
+	•	% of workforce with current certifications (OSHA 10/30, site-specific orientations)
+	•	JHA / pre-task plans completed for high-risk tasks (%)
+	•	Permit compliance rate (hot work, confined space, excavation)
+Normalizing Inputs:
+	•	Total manhours worked in the period
+	•	Total headcount on site
+	•	Project risk tier (Low / Medium / High — dropdown)
+	•	% of new hires on crew
+Report Output:
+	•	Overall Safety Score (0–100) and Letter Grade
+	•	Category scores broken out: Incident History, Training Compliance, Hazard Management, Permit & Pre-Task, Reporting Culture
+	•	Trend line vs. prior 3 periods (weekly or monthly toggle)
+	•	Color-coded risk flags on any metric below threshold
+	•	Top 3 risk areas with recommended corrective actions (text field)
+	•	Export to PDF button
+Tech Requirements:
+	•	Each contractor has a profile; reports are stored per contractor per period
+	•	Weighted scoring logic: leading indicators = 65%, lagging = 35%
+	•	Admin can adjust category weights in settings
+	•	Mobile-friendly input forms for field entry
+	•	Dashboard view showing all contractors ranked by current safety score
