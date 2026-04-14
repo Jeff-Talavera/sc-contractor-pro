@@ -50,7 +50,7 @@ const inspectionStatusColors: Record<string, string> = {
 
 const observationStatusColors: Record<string, string> = {
   Open: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  "In progress": "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+  "In progress": "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   Corrected: "bg-green-500/15 text-green-700 dark:text-green-400",
   Verified: "bg-green-500/15 text-green-700 dark:text-green-400",
 };
