@@ -8,6 +8,7 @@ export const organizations = pgTable("organizations", {
   name: text("name").notNull(),
   logoUrl: text("logo_url"),
   status: text("status").notNull().default("active"),
+  createdAt: text("created_at"),
 });
 
 export const users = pgTable("users", {

@@ -36,8 +36,7 @@ interface Analytics {
   totalUsers: number;
   totalInspections: number;
   totalSafetyReports: number;
-  totalClients: number;
-  totalJobsites: number;
+  newOrgsLast30Days: number;
 }
 
 interface SupportData {
@@ -143,8 +142,7 @@ function AnalyticsView() {
   const stats = [
     { label: "Total Firms", value: data?.totalOrgs, icon: Building2, color: "text-blue-600" },
     { label: "Total Users", value: data?.totalUsers, icon: Users, color: "text-green-600" },
-    { label: "Total Clients", value: data?.totalClients, icon: Briefcase, color: "text-purple-600" },
-    { label: "Total Jobsites", value: data?.totalJobsites, icon: MapPin, color: "text-orange-600" },
+    { label: "New Firms (30d)", value: data?.newOrgsLast30Days, icon: Plus, color: "text-emerald-600" },
     { label: "Inspections", value: data?.totalInspections, icon: ClipboardList, color: "text-cyan-600" },
     { label: "Safety Reports", value: data?.totalSafetyReports, icon: FileText, color: "text-rose-600" },
   ];

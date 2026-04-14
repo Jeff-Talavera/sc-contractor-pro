@@ -108,7 +108,7 @@ export function calculateSafetyScores(data: InsertSafetyReport, settings: Safety
 // ─── Row mappers ──────────────────────────────────────────────────────────────
 
 function mapOrg(row: typeof t.organizations.$inferSelect): Organization {
-  return { id: row.id, name: row.name, logoUrl: row.logoUrl ?? undefined, status: row.status };
+  return { id: row.id, name: row.name, logoUrl: row.logoUrl ?? undefined, status: row.status, createdAt: row.createdAt ?? undefined };
 }
 
 function mapUser(row: typeof t.users.$inferSelect): User {
@@ -399,8 +399,7 @@ export interface IStorage {
     totalUsers: number;
     totalInspections: number;
     totalSafetyReports: number;
-    totalClients: number;
-    totalJobsites: number;
+    newOrgsLast30Days: number;
   }>;
   adminGetOrgClients(orgId: string): Promise<Client[]>;
   adminGetOrgJobsites(orgId: string): Promise<Jobsite[]>;
@@ -939,7 +938,9 @@ export class DatabaseStorage implements IStorage {
 
   async adminCreateOrg(name: string): Promise<Organization> {
     const id = `org-${randomUUID().slice(0, 8)}`;
-    const rows = await db.insert(t.organizations).values({ id, name, status: "active" }).returning();
+    const rows = await db.insert(t.organizations).values({
+      id, name, status: "active", createdAt: new Date().toISOString(),
+    }).returning();
     return mapOrg(rows[0]);
   }
 
@@ -973,24 +974,25 @@ export class DatabaseStorage implements IStorage {
     totalUsers: number;
     totalInspections: number;
     totalSafetyReports: number;
-    totalClients: number;
-    totalJobsites: number;
+    newOrgsLast30Days: number;
   }> {
-    const [orgs, users, inspections, safetyReports, clients, jobsites] = await Promise.all([
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const [orgs, users, inspections, safetyReports] = await Promise.all([
       db.select().from(t.organizations),
       db.select().from(t.users).where(eq(t.users.isSuperAdmin, false)),
       db.select().from(t.inspections),
       db.select().from(t.safetyReports),
-      db.select().from(t.clients),
-      db.select().from(t.jobsites),
     ]);
+    const customerOrgs = orgs.filter(o => o.id !== "org-system");
+    const newOrgsLast30Days = customerOrgs.filter(
+      o => o.createdAt && o.createdAt >= thirtyDaysAgo
+    ).length;
     return {
-      totalOrgs: orgs.filter(o => o.id !== "org-system").length,
-      totalUsers: users.length,
+      totalOrgs: customerOrgs.length,
+      totalUsers: users.filter(u => u.organizationId !== "org-system").length,
       totalInspections: inspections.length,
       totalSafetyReports: safetyReports.length,
-      totalClients: clients.length,
-      totalJobsites: jobsites.length,
+      newOrgsLast30Days,
     };
   }
 
@@ -1005,7 +1007,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async adminGetOrgInspections(orgId: string): Promise<Inspection[]> {
-    const rows = await db.select().from(t.inspections).where(eq(t.inspections.organizationId, orgId));
+    const { desc } = await import("drizzle-orm");
+    const rows = await db.select().from(t.inspections)
+      .where(eq(t.inspections.organizationId, orgId))
+      .orderBy(desc(t.inspections.date));
     return rows.map(mapInspection);
   }
 }

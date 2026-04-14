@@ -5,6 +5,7 @@ export interface Organization {
   name: string;
   logoUrl?: string;
   status: string;
+  createdAt?: string;
 }
 
 export interface User {

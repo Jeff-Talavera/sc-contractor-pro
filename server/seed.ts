@@ -257,6 +257,7 @@ export async function seedSuperAdmin() {
     id: SUPER_ADMIN_ORG_ID,
     name: "SafeSite (System)",
     status: "active",
+    createdAt: new Date().toISOString(),
   }).onConflictDoNothing();
 
   const hash = await bcrypt.hash(SUPER_ADMIN_DEFAULT_PASSWORD, 10);
