@@ -1,5 +1,5 @@
-import { Switch, Route, useLocation } from "wouter";
-import { queryClient } from "./lib/queryClient";
+import { Switch, Route, useLocation, Redirect } from "wouter";
+import { queryClient, getQueryFn, apiRequest } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -14,7 +14,9 @@ import CodeLibraryPage from "@/pages/code-library";
 import WorkforcePage from "@/pages/workforce";
 import SafetyRatingsPage from "@/pages/safety-ratings";
 import SettingsPage from "@/pages/settings";
-import { HardHat } from "lucide-react";
+import LoginPage from "@/pages/login";
+import { HardHat, LogOut } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { User, Organization } from "@shared/schema";
 
 const routePageNames: Array<[string, string]> = [
@@ -38,9 +40,10 @@ function getPageName(location: string): string {
 }
 
 function TopNav() {
-  const [location] = useLocation();
-  const { data: me } = useQuery<{ user: User; organization: Organization }>({
+  const [location, navigate] = useLocation();
+  const { data: me } = useQuery<{ user: User; organization: Organization } | null>({
     queryKey: ["/api/me"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
   });
 
   const initials = me?.user.name
@@ -51,6 +54,12 @@ function TopNav() {
         .join("")
         .toUpperCase()
     : "?";
+
+  async function handleLogout() {
+    await apiRequest("POST", "/api/auth/logout");
+    queryClient.clear();
+    navigate("/login");
+  }
 
   return (
     <header
@@ -86,52 +95,95 @@ function TopNav() {
         >
           {initials}
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10"
+          onClick={handleLogout}
+          title="Sign out"
+          data-testid="button-logout"
+        >
+          <LogOut className="h-4 w-4" />
+        </Button>
       </div>
     </header>
   );
 }
 
-function Router() {
-  return (
-    <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/clients" component={ClientsPage} />
-      <Route path="/clients/:id" component={ClientsPage} />
-      <Route path="/jobsites" component={JobsitesPage} />
-      <Route path="/jobsites/:id" component={JobsitesPage} />
-      <Route path="/inspections" component={InspectionsPage} />
-      <Route path="/inspections/:id" component={InspectionsPage} />
-      <Route path="/code-library" component={CodeLibraryPage} />
-      <Route path="/workforce" component={WorkforcePage} />
-      <Route path="/workforce/:id" component={WorkforcePage} />
-      <Route path="/safety-ratings" component={SafetyRatingsPage} />
-      <Route path="/safety-ratings/:clientId" component={SafetyRatingsPage} />
-      <Route path="/settings" component={SettingsPage} />
-      <Route component={NotFound} />
-    </Switch>
-  );
+function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { data: me, isLoading } = useQuery<{ user: User; organization: Organization } | null>({
+    queryKey: ["/api/me"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary animate-pulse">
+            <HardHat className="h-5 w-5 text-white" />
+          </div>
+          <span className="text-sm text-gray-500">Loading…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!me) {
+    return <Redirect to="/login" />;
+  }
+
+  return <>{children}</>;
 }
 
-function App() {
+function AppShell() {
   const style = {
     "--sidebar-width": "15rem",
     "--sidebar-width-icon": "3rem",
   };
 
   return (
+    <SidebarProvider style={style as React.CSSProperties}>
+      <div className="flex h-screen w-full flex-col">
+        <TopNav />
+        <div className="flex flex-1 min-h-0">
+          <AppSidebar />
+          <main className="flex-1 overflow-hidden">
+            <Switch>
+              <Route path="/" component={Dashboard} />
+              <Route path="/clients" component={ClientsPage} />
+              <Route path="/clients/:id" component={ClientsPage} />
+              <Route path="/jobsites" component={JobsitesPage} />
+              <Route path="/jobsites/:id" component={JobsitesPage} />
+              <Route path="/inspections" component={InspectionsPage} />
+              <Route path="/inspections/:id" component={InspectionsPage} />
+              <Route path="/code-library" component={CodeLibraryPage} />
+              <Route path="/workforce" component={WorkforcePage} />
+              <Route path="/workforce/:id" component={WorkforcePage} />
+              <Route path="/safety-ratings" component={SafetyRatingsPage} />
+              <Route path="/safety-ratings/:clientId" component={SafetyRatingsPage} />
+              <Route path="/settings" component={SettingsPage} />
+              <Route component={NotFound} />
+            </Switch>
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+}
+
+function App() {
+  return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <SidebarProvider style={style as React.CSSProperties}>
-          <div className="flex h-screen w-full flex-col">
-            <TopNav />
-            <div className="flex flex-1 min-h-0">
-              <AppSidebar />
-              <main className="flex-1 overflow-hidden">
-                <Router />
-              </main>
-            </div>
-          </div>
-        </SidebarProvider>
+        <Switch>
+          <Route path="/login" component={LoginPage} />
+          <Route>
+            <AuthGuard>
+              <AppShell />
+            </AuthGuard>
+          </Route>
+        </Switch>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

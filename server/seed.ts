@@ -1,6 +1,7 @@
 import { db } from "./db";
 import * as t from "@shared/tables";
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
+import bcrypt from "bcrypt";
 import {
   mockOrganizations, mockUsers, mockClients, mockJobsites, mockCodeReferences,
   mockInspectionTemplates, mockInspections, mockObservations,
@@ -217,4 +218,24 @@ export async function seed() {
   }).onConflictDoNothing();
 
   console.log("Seed complete.");
+}
+
+// Default password for all seeded users (change per user in production)
+const DEFAULT_PASSWORDS: Record<string, string> = {
+  "user-1": "SafeSite2024!",
+  "user-2": "SafeSite2024!",
+  "user-3": "SafeSite2024!",
+};
+
+export async function seedPasswords() {
+  const users = await db.select().from(t.users).where(isNull(t.users.passwordHash));
+  if (users.length === 0) return;
+
+  console.log(`Setting passwords for ${users.length} user(s)...`);
+  for (const user of users) {
+    const plain = DEFAULT_PASSWORDS[user.id] ?? "SafeSite2024!";
+    const hash = await bcrypt.hash(plain, 10);
+    await db.update(t.users).set({ passwordHash: hash }).where(eq(t.users.id, user.id));
+  }
+  console.log("Passwords set.");
 }

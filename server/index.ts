@@ -1,4 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
+import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -64,6 +66,26 @@ app.use((req, res, next) => {
   try {
     const { pool } = await import("./db");
     await pool.query("SELECT 1 FROM organizations LIMIT 1");
+
+    // Configure session store using same pool
+    const PgStore = connectPgSimple(session);
+    app.use(
+      session({
+        store: new PgStore({
+          pool,
+          createTableIfMissing: true,
+          tableName: "sessions",
+        }),
+        secret: process.env.SESSION_SECRET || "dev-secret-change-in-production",
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        },
+      })
+    );
   } catch (err) {
     console.error(
       "Database not ready. Run `npx drizzle-kit push` to apply the schema, then restart.",
@@ -78,6 +100,14 @@ app.use((req, res, next) => {
     await seed();
   } catch (err) {
     console.error("Seed error:", err);
+  }
+
+  // Ensure all seeded users have password hashes (idempotent)
+  try {
+    const { seedPasswords } = await import("./seed");
+    await seedPasswords();
+  } catch (err) {
+    console.error("Password seed error:", err);
   }
 
   await registerRoutes(httpServer, app);
