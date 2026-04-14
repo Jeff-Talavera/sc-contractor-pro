@@ -234,6 +234,11 @@ export const safetyReports = pgTable("safety_reports", {
   createdAt: text("created_at").notNull(),
 });
 
+export const seedMeta = pgTable("seed_meta", {
+  key: text("key").primaryKey(),
+  seededAt: text("seeded_at").notNull(),
+});
+
 export const safetyReportSettings = pgTable("safety_report_settings", {
   organizationId: text("organization_id").primaryKey().references(() => organizations.id),
   incidentHistoryWeight: integer("incident_history_weight").notNull().default(35),

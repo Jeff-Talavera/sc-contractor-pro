@@ -1,5 +1,6 @@
 import { db } from "./db";
 import * as t from "@shared/tables";
+import { eq } from "drizzle-orm";
 import {
   mockOrganizations, mockUsers, mockClients, mockJobsites, mockCodeReferences,
   mockInspectionTemplates, mockInspections, mockObservations,
@@ -8,10 +9,12 @@ import {
   mockSafetyReports, mockSafetyReportSettings
 } from "./mockData";
 
+const SEED_VERSION = "v1";
+
 export async function seed() {
-  // Check if already seeded
-  const existing = await db.select().from(t.organizations).limit(1);
-  if (existing.length > 0) {
+  // Check seed completion marker — more reliable than checking entity presence
+  const marker = await db.select().from(t.seedMeta).where(eq(t.seedMeta.key, SEED_VERSION)).limit(1);
+  if (marker.length > 0) {
     console.log("Database already seeded — skipping.");
     return;
   }
@@ -206,6 +209,12 @@ export async function seed() {
       photos: sr.photos, createdAt: sr.createdAt,
     }).onConflictDoNothing();
   }
+
+  // Write completion marker — this is what idempotency checks on subsequent startups
+  await db.insert(t.seedMeta).values({
+    key: SEED_VERSION,
+    seededAt: new Date().toISOString(),
+  }).onConflictDoNothing();
 
   console.log("Seed complete.");
 }
