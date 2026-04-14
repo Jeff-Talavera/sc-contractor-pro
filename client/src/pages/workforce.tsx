@@ -141,7 +141,7 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {availableUsers.map(u => (
+                    {[...availableUsers].sort((a, b) => a.name.localeCompare(b.name)).map(u => (
                       <SelectItem key={u.id} value={u.id}>{u.name} ({u.email})</SelectItem>
                     ))}
                   </SelectContent>
@@ -410,9 +410,9 @@ function DirectoryTab() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Roles</SelectItem>
-            <SelectItem value="Owner">Owner</SelectItem>
             <SelectItem value="Admin">Admin</SelectItem>
             <SelectItem value="Inspector">Inspector</SelectItem>
+            <SelectItem value="Owner">Owner</SelectItem>
           </SelectContent>
         </Select>
         <Button onClick={() => setAddOpen(true)} data-testid="button-add-employee">
@@ -521,7 +521,7 @@ function AssignDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {employees?.filter(e => e.status === "Active").map(emp => (
+                    {[...(employees?.filter(e => e.status === "Active") ?? [])].sort((a, b) => (userMap.get(a.userId)?.name ?? "").localeCompare(userMap.get(b.userId)?.name ?? "")).map(emp => (
                       <SelectItem key={emp.id} value={emp.id}>{userMap.get(emp.userId)?.name ?? emp.id}</SelectItem>
                     ))}
                   </SelectContent>
@@ -539,7 +539,7 @@ function AssignDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {jobsites?.map(j => (
+                    {[...(jobsites ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map(j => (
                       <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -805,7 +805,7 @@ function NewTimesheetDialog({ open, onOpenChange }: { open: boolean; onOpenChang
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {employees?.filter(e => e.status === "Active").map(emp => (
+                    {[...(employees?.filter(e => e.status === "Active") ?? [])].sort((a, b) => (userMap.get(a.userId)?.name ?? "").localeCompare(userMap.get(b.userId)?.name ?? "")).map(emp => (
                       <SelectItem key={emp.id} value={emp.id}>{userMap.get(emp.userId)?.name ?? emp.id}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1033,7 +1033,7 @@ function TimesheetDetail({ timesheet, onBack }: { timesheet: Timesheet; onBack: 
                         <SelectValue placeholder="Jobsite" />
                       </SelectTrigger>
                       <SelectContent>
-                        {jobsites?.map(j => (
+                        {[...(jobsites ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map(j => (
                           <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>
                         ))}
                       </SelectContent>
@@ -1120,7 +1120,7 @@ function TimesheetsTab() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Employees</SelectItem>
-            {employees?.map(emp => (
+            {[...(employees ?? [])].sort((a, b) => (userMap.get(a.userId)?.name ?? "").localeCompare(userMap.get(b.userId)?.name ?? "")).map(emp => (
               <SelectItem key={emp.id} value={emp.id}>{userMap.get(emp.userId)?.name ?? emp.id}</SelectItem>
             ))}
           </SelectContent>
@@ -1131,10 +1131,10 @@ function TimesheetsTab() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="Draft">Draft</SelectItem>
-            <SelectItem value="Submitted">Submitted</SelectItem>
             <SelectItem value="Approved">Approved</SelectItem>
+            <SelectItem value="Draft">Draft</SelectItem>
             <SelectItem value="Rejected">Rejected</SelectItem>
+            <SelectItem value="Submitted">Submitted</SelectItem>
           </SelectContent>
         </Select>
         <div className="flex-1" />

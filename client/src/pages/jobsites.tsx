@@ -271,7 +271,7 @@ function ComplaintsViolationsTab({ jobsiteId }: { jobsiteId: string }) {
   );
 }
 
-const projectTypes = ["NB", "ALT", "DEM", "FO"];
+const projectTypes = ["ALT", "DEM", "FO", "NB"];
 
 function AddJobsiteForm({ preselectedClientId, onClose }: { preselectedClientId?: string; onClose: () => void }) {
   const { toast } = useToast();
@@ -338,7 +338,7 @@ function AddJobsiteForm({ preselectedClientId, onClose }: { preselectedClientId?
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {clients?.map(c => (
+                    {[...(clients ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map(c => (
                       <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                     ))}
                   </SelectContent>

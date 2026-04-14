@@ -429,7 +429,7 @@ function NewInspectionWizard({ onClose }: { onClose: () => void }) {
       {step === 1 && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">Select a jobsite</p>
-          {jobsites?.map(job => (
+          {[...(jobsites ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map(job => (
             <div
               key={job.id}
               className={`rounded-md p-3 cursor-pointer border transition-colors ${
@@ -458,7 +458,7 @@ function NewInspectionWizard({ onClose }: { onClose: () => void }) {
       {step === 2 && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">Select an inspection template</p>
-          {templates?.map(tpl => (
+          {[...(templates ?? [])].sort((a, b) => a.name.localeCompare(b.name)).map(tpl => (
             <div
               key={tpl.id}
               className={`rounded-md p-3 cursor-pointer border transition-colors ${
@@ -731,9 +731,9 @@ function AddObservationForm({
   });
 
   const categories = [
-    "Fall Protection", "Housekeeping", "Scaffolds", "Public Protection",
-    "Administrative", "Cranes", "Hoists", "Excavations", "Fire Safety",
-    "Electrical", "PPE", "Ladders", "Signage"
+    "Administrative", "Cranes", "Electrical", "Excavations", "Fall Protection",
+    "Fire Safety", "Hoists", "Housekeeping", "Ladders", "PPE",
+    "Public Protection", "Scaffolds", "Signage"
   ];
 
   return (
@@ -1133,7 +1133,7 @@ function InspectionDetail({ id }: { id: string }) {
   const client = clients?.find(c => c.id === jobsite?.clientId);
   const inspectorEmployee = employees?.find(e => e.userId === inspection.inspectorUserId);
 
-  const obsStatuses = ["Open", "In progress", "Corrected", "Verified"];
+  const obsStatuses = ["Corrected", "In progress", "Open", "Verified"];
 
   const totalObs = observations?.length ?? 0;
   const positiveObs = observations?.filter(o => o.type === "positive").length ?? 0;
