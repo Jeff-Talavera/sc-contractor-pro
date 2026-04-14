@@ -762,7 +762,16 @@ function JobsiteDetail({ id }: { id: string }) {
                               {insp.date} - {userMap.get(insp.inspectorUserId)?.name ?? "Unknown"}
                             </p>
                           </div>
-                          <Badge variant={insp.status === "Submitted" ? "default" : "secondary"}>
+                          <Badge
+                            variant="secondary"
+                            className={
+                              insp.status === "Submitted"
+                                ? "bg-green-500/15 text-green-700 dark:text-green-400"
+                                : insp.status === "Draft" || insp.status === "In Progress"
+                                ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                                : ""
+                            }
+                          >
                             {insp.status}
                           </Badge>
                         </CardContent>

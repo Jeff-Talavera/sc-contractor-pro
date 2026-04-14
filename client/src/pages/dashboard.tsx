@@ -135,7 +135,16 @@ export default function Dashboard() {
                               <p className="text-sm font-medium truncate">{jobsite?.name ?? "Unknown"}</p>
                               <p className="text-xs text-muted-foreground">{insp.date}</p>
                             </div>
-                            <Badge variant={insp.status === "Submitted" ? "default" : "secondary"} className="shrink-0">
+                            <Badge
+                              variant="secondary"
+                              className={`shrink-0 ${
+                                insp.status === "Submitted"
+                                  ? "bg-green-500/15 text-green-700 dark:text-green-400"
+                                  : insp.status === "Draft" || insp.status === "In Progress"
+                                  ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                                  : ""
+                              }`}
+                            >
                               {insp.status}
                             </Badge>
                           </div>

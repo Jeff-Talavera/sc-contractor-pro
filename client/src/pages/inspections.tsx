@@ -36,9 +36,23 @@ import {
 } from "lucide-react";
 
 const severityColors: Record<string, string> = {
-  Low: "bg-chart-4/15 text-chart-4",
-  Medium: "bg-chart-1/15 text-chart-1",
+  Low: "bg-green-500/15 text-green-700 dark:text-green-400",
+  Medium: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   High: "bg-destructive/15 text-destructive",
+};
+
+const inspectionStatusColors: Record<string, string> = {
+  Draft: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  "In Progress": "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  Submitted: "bg-green-500/15 text-green-700 dark:text-green-400",
+  Archived: "bg-muted text-muted-foreground",
+};
+
+const observationStatusColors: Record<string, string> = {
+  Open: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  "In progress": "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+  Corrected: "bg-green-500/15 text-green-700 dark:text-green-400",
+  Verified: "bg-green-500/15 text-green-700 dark:text-green-400",
 };
 
 const statusIcons: Record<string, any> = {
@@ -1185,7 +1199,7 @@ function InspectionDetail({ id }: { id: string }) {
                   </TooltipContent>
                 </Tooltip>
               )}
-              <Badge variant={inspection.status === "Submitted" ? "default" : "secondary"}>
+              <Badge variant="secondary" className={inspectionStatusColors[inspection.status] ?? ""}>
                 {inspection.status}
               </Badge>
               {inspection.status === "Draft" && (
@@ -1576,7 +1590,7 @@ function InspectionsList() {
                             </span>
                           </div>
                         </div>
-                        <Badge variant={insp.status === "Submitted" ? "default" : "secondary"} className="shrink-0">
+                        <Badge variant="secondary" className={`shrink-0 ${inspectionStatusColors[insp.status] ?? ""}`}>
                           {insp.status}
                         </Badge>
                       </CardContent>
