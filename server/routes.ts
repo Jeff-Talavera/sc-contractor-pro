@@ -43,6 +43,11 @@ export async function registerRoutes(
     const parsed = insertClientSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
     const user = storage.getCurrentUser();
+    if (parsed.data.parentClientId) {
+      const parent = storage.getClient(parsed.data.parentClientId);
+      if (!parent) return res.status(400).json({ message: "Parent client not found" });
+      if (parent.parentClientId) return res.status(400).json({ message: "Cannot assign a subcontractor as a parent (nesting limited to one level)" });
+    }
     const client = storage.createClient(user.organizationId, parsed.data);
     res.status(201).json(client);
   });

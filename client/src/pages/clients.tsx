@@ -566,7 +566,7 @@ function ClientDetail({ id }: { id: string }) {
             </CardContent>
           </Card>
 
-          {subcontractors && subcontractors.length > 0 && (
+          {!client.parentClientId && subcontractors && subcontractors.length > 0 && (
             <div>
               <div className="flex items-center justify-between gap-2 mb-3">
                 <h2 className="text-lg font-semibold" data-testid="text-subcontractors-header">
@@ -625,13 +625,13 @@ function ClientDetail({ id }: { id: string }) {
             </div>
           )}
 
-          {!subcontractors || subcontractors.length === 0 ? (
+          {!client.parentClientId && (!subcontractors || subcontractors.length === 0) && (
             <div className="flex justify-end">
               <Button size="sm" variant="outline" onClick={() => setShowAddSubcontractor(true)} data-testid="button-add-subcontractor-empty">
                 <Plus className="h-4 w-4 mr-1" /> Add Subcontractor
               </Button>
             </div>
-          ) : null}
+          )}
 
           <Dialog open={showAddSubcontractor} onOpenChange={setShowAddSubcontractor}>
             <DialogContent>

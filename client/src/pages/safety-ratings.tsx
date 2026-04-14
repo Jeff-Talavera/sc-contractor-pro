@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import type { SafetyReport, SafetyReportSettings, Client, Organization } from "@shared/schema";
-import { insertSafetyReportSchema } from "@shared/schema";
+import { insertSafetyReportSchema, updateSafetySettingsSchema } from "@shared/schema";
+import type { UpdateSafetySettings } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +14,7 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useForm } from "react-hook-form";
+import { useForm, UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -107,7 +108,7 @@ function NumberField({
   placeholder,
   hint,
 }: {
-  form: any;
+  form: UseFormReturn<FormValues>;
   name: keyof FormValues;
   label: string;
   placeholder?: string;
@@ -116,7 +117,7 @@ function NumberField({
   return (
     <FormField
       control={form.control}
-      name={name as any}
+      name={name}
       render={({ field }) => (
         <FormItem>
           <FormLabel className="text-xs">{label}</FormLabel>
@@ -427,7 +428,7 @@ function NewReportDialog({
                       ["inspectionsCompleted", "inspectionsScheduled", "correctiveActionsClosed", "correctiveActionsOpened", "avgCorrectiveActionDays", "nearMissReports", "toolboxTalksCompleted", "toolboxTalksScheduled", "certifiedWorkforcePercent", "jhaCompliancePercent", "permitCompliancePercent"],
                       [],
                     ];
-                    const valid = await form.trigger(fields[step - 1] as any);
+                    const valid = await form.trigger(fields[step - 1]);
                     if (valid) setStep(s => s + 1);
                   }}
                   data-testid="button-report-next"
@@ -459,7 +460,7 @@ function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   const { toast } = useToast();
   const { data: settings } = useQuery<SafetyReportSettings>({ queryKey: ["/api/safety-settings"] });
 
-  const form = useForm({
+  const form = useForm<UpdateSafetySettings>({
     defaultValues: {
       incidentHistoryWeight: settings?.incidentHistoryWeight ?? 35,
       trainingComplianceWeight: settings?.trainingComplianceWeight ?? 20,
@@ -470,7 +471,7 @@ function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   });
 
   const mutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: UpdateSafetySettings) => {
       const res = await apiRequest("PUT", "/api/safety-settings", data);
       return res.json();
     },
@@ -482,7 +483,15 @@ function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   });
 
   const weights = form.watch();
-  const total = Object.values(weights).reduce((a, b) => (a as number) + (b as number), 0) as number;
+  const total = Object.values(weights).reduce((sum, v) => sum + (v ?? 0), 0);
+
+  const weightFields: { key: keyof UpdateSafetySettings; label: string }[] = [
+    { key: "incidentHistoryWeight", label: "Incident History (Lagging)" },
+    { key: "trainingComplianceWeight", label: "Training Compliance" },
+    { key: "hazardManagementWeight", label: "Hazard Management" },
+    { key: "permitPreTaskWeight", label: "Permit & Pre-Task" },
+    { key: "reportingCultureWeight", label: "Reporting Culture" },
+  ];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -493,26 +502,20 @@ function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
-            {([
-              ["incidentHistoryWeight", "Incident History (Lagging)"],
-              ["trainingComplianceWeight", "Training Compliance"],
-              ["hazardManagementWeight", "Hazard Management"],
-              ["permitPreTaskWeight", "Permit & Pre-Task"],
-              ["reportingCultureWeight", "Reporting Culture"],
-            ] as [string, string][]).map(([field, label]) => (
-              <FormField key={field} control={form.control} name={field as any} render={() => (
+            {weightFields.map(({ key, label }) => (
+              <FormField key={key} control={form.control} name={key} render={() => (
                 <FormItem>
                   <div className="flex items-center justify-between">
                     <FormLabel className="text-sm">{label}</FormLabel>
-                    <span className="text-sm font-medium w-8 text-right" data-testid={`weight-${field}`}>{form.watch(field as any)}%</span>
+                    <span className="text-sm font-medium w-8 text-right" data-testid={`weight-${key}`}>{form.watch(key)}%</span>
                   </div>
                   <FormControl>
                     <Input
                       type="number"
                       min={0}
                       max={100}
-                      {...form.register(field as any, { valueAsNumber: true })}
-                      data-testid={`input-${field}`}
+                      {...form.register(key, { valueAsNumber: true })}
+                      data-testid={`input-${key}`}
                     />
                   </FormControl>
                 </FormItem>
@@ -809,7 +812,7 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
   const parentClient = client?.parentClientId
     ? allClients?.find(c => c.id === client.parentClientId)
     : undefined;
-  const { data: meData } = useQuery<{ user: { role: string }; organization: any }>({ queryKey: ["/api/me"] });
+  const { data: meData } = useQuery<{ user: { role: string }; organization: Organization }>({ queryKey: ["/api/me"] });
   const isAdmin = meData?.user?.role === "Owner" || meData?.user?.role === "Admin";
 
   const sorted = [...(reports ?? [])].sort((a, b) => a.periodStart.localeCompare(b.periodStart));
@@ -823,12 +826,12 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
   }));
 
   const handleDownload = async (report: SafetyReport) => {
-    if (!client || !(meData as any)?.organization) return;
+    if (!client || !meData?.organization) return;
     setDownloadingId(report.id);
     try {
-      await exportSafetyReportPDF(report, client, (meData as any).organization, parentClient);
-    } catch (err: any) {
-      toast({ title: "Export failed", description: err.message, variant: "destructive" });
+      await exportSafetyReportPDF(report, client, meData.organization, parentClient);
+    } catch (err: unknown) {
+      toast({ title: "Export failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
       setDownloadingId(null);
     }
