@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import type { SafetyReport, SafetyReportSettings, Client, Organization } from "@shared/schema";
@@ -470,6 +470,18 @@ function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
     },
   });
 
+  useEffect(() => {
+    if (settings) {
+      form.reset({
+        incidentHistoryWeight: settings.incidentHistoryWeight,
+        trainingComplianceWeight: settings.trainingComplianceWeight,
+        hazardManagementWeight: settings.hazardManagementWeight,
+        permitPreTaskWeight: settings.permitPreTaskWeight,
+        reportingCultureWeight: settings.reportingCultureWeight,
+      });
+    }
+  }, [settings, form]);
+
   const mutation = useMutation({
     mutationFn: async (data: UpdateSafetySettings) => {
       const res = await apiRequest("PUT", "/api/safety-settings", data);
@@ -564,17 +576,20 @@ function CategoryBreakdown({ report }: { report: SafetyReport }) {
   );
 }
 
+type SortKey = "score-desc" | "score-asc" | "name-asc" | "name-desc";
+
 // ─── Dashboard (ranked list) ──────────────────────────────────────────────────
 
 function SafetyRatingsDashboard() {
   const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("score-desc");
   const [showNewReport, setShowNewReport] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   const { data: allReports, isLoading: reportsLoading } = useQuery<SafetyReport[]>({
     queryKey: ["/api/safety-reports"],
   });
-  const { data: clients } = useQuery<Client[]>({ queryKey: ["/api/clients"] });
+  const { data: clients, isLoading: clientsLoading } = useQuery<Client[]>({ queryKey: ["/api/clients"] });
   const { data: meData } = useQuery<{ user: { role: string } }>({ queryKey: ["/api/me"] });
   const isAdmin = meData?.user?.role === "Owner" || meData?.user?.role === "Admin";
 
@@ -594,37 +609,47 @@ function SafetyRatingsDashboard() {
     historyByClient.set(clientId, sorted);
   });
 
-  const matchesSearch = (clientId: string) => {
-    const client = clientMap.get(clientId);
-    return !search || client?.name.toLowerCase().includes(search.toLowerCase());
+  const matchesSearch = (c: Client) =>
+    !search || c.name.toLowerCase().includes(search.toLowerCase());
+
+  const allClients = clients ?? [];
+  const topLevelClients = allClients.filter(c => !c.parentClientId && matchesSearch(c));
+  const subClientsByParent = new Map<string, Client[]>();
+  allClients.filter(c => c.parentClientId).forEach(c => {
+    const arr = subClientsByParent.get(c.parentClientId!) ?? [];
+    arr.push(c);
+    subClientsByParent.set(c.parentClientId!, arr);
+  });
+
+  const sortClients = (arr: Client[]) => {
+    return [...arr].sort((a, b) => {
+      const ra = latestByClient.get(a.id);
+      const rb = latestByClient.get(b.id);
+      if (sortKey === "score-desc") {
+        return (rb?.overallScore ?? -1) - (ra?.overallScore ?? -1);
+      } else if (sortKey === "score-asc") {
+        const sa = ra?.overallScore ?? 101;
+        const sb = rb?.overallScore ?? 101;
+        return sa - sb;
+      } else if (sortKey === "name-asc") {
+        return a.name.localeCompare(b.name);
+      } else {
+        return b.name.localeCompare(a.name);
+      }
+    });
   };
 
-  const allRanked = Array.from(latestByClient.values())
-    .sort((a, b) => b.overallScore - a.overallScore);
+  const sortedTopLevel = sortClients(topLevelClients);
 
-  const topLevelRanked = allRanked.filter(r => {
-    const client = clientMap.get(r.clientId);
-    return !client?.parentClientId && matchesSearch(r.clientId);
+  const ratedReports = Array.from(latestByClient.values()).filter(r => {
+    const c = clientMap.get(r.clientId);
+    return c && matchesSearch(c);
   });
-
-  const subRankedByParent = new Map<string, SafetyReport[]>();
-  allRanked.forEach(r => {
-    const client = clientMap.get(r.clientId);
-    if (client?.parentClientId) {
-      const existing = subRankedByParent.get(client.parentClientId) ?? [];
-      existing.push(r);
-      subRankedByParent.set(client.parentClientId, existing);
-    }
-  });
-
-  const ranked = allRanked.filter(r => matchesSearch(r.clientId));
-
-  const avgScore = ranked.length > 0
-    ? Math.round(ranked.reduce((s, r) => s + r.overallScore, 0) / ranked.length)
+  const avgScore = ratedReports.length > 0
+    ? Math.round(ratedReports.reduce((s, r) => s + r.overallScore, 0) / ratedReports.length)
     : 0;
-
-  const gradeA = ranked.filter(r => r.letterGrade === "A").length;
-  const gradeD = ranked.filter(r => r.letterGrade === "D").length;
+  const gradeA = ratedReports.filter(r => r.letterGrade === "A").length;
+  const gradeD = ratedReports.filter(r => r.letterGrade === "D").length;
 
   return (
     <div className="flex flex-col h-full">
@@ -647,7 +672,7 @@ function SafetyRatingsDashboard() {
             )}
           </div>
 
-          {!reportsLoading && ranked.length > 0 && (
+          {!reportsLoading && !clientsLoading && ratedReports.length > 0 && (
             <div className="grid grid-cols-3 gap-4">
               <Card data-testid="card-avg-score">
                 <CardContent className="p-4">
@@ -666,7 +691,7 @@ function SafetyRatingsDashboard() {
                     <Shield className="h-3 w-3" /> Grade A Contractors
                   </div>
                   <div className="text-3xl font-bold text-green-700 dark:text-green-400">{gradeA}</div>
-                  <div className="text-xs text-muted-foreground mt-1">of {ranked.length} contractors</div>
+                  <div className="text-xs text-muted-foreground mt-1">of {ratedReports.length} rated</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-grade-d-count">
@@ -681,25 +706,38 @@ function SafetyRatingsDashboard() {
             </div>
           )}
 
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search contractors..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9"
-              data-testid="input-search-ratings"
-            />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search contractors..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-9"
+                data-testid="input-search-ratings"
+              />
+            </div>
+            <Select value={sortKey} onValueChange={v => setSortKey(v as SortKey)}>
+              <SelectTrigger className="w-44" data-testid="select-sort-ratings">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="score-desc">Score: High → Low</SelectItem>
+                <SelectItem value="score-asc">Score: Low → High</SelectItem>
+                <SelectItem value="name-asc">Name: A → Z</SelectItem>
+                <SelectItem value="name-desc">Name: Z → A</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          {reportsLoading ? (
+          {reportsLoading || clientsLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full" />)}
             </div>
-          ) : ranked.length === 0 ? (
+          ) : topLevelClients.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">
               <Shield className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-medium">{search ? "No contractors match your search" : "No safety reports yet"}</p>
+              <p className="text-sm font-medium">{search ? "No contractors match your search" : "No clients yet"}</p>
               {!search && isAdmin && (
                 <Button className="mt-4" onClick={() => setShowNewReport(true)} data-testid="button-new-report-empty">
                   <Plus className="h-4 w-4 mr-1" /> Add First Report
@@ -708,15 +746,14 @@ function SafetyRatingsDashboard() {
             </div>
           ) : (
             <div className="space-y-2">
-              {topLevelRanked.map((report, idx) => {
-                const client = clientMap.get(report.clientId);
-                const history = historyByClient.get(report.clientId) ?? [];
-                const subs = subRankedByParent.get(report.clientId) ?? [];
-                if (!client) return null;
+              {sortedTopLevel.map((client, idx) => {
+                const report = latestByClient.get(client.id);
+                const history = historyByClient.get(client.id) ?? [];
+                const subClients = sortClients(subClientsByParent.get(client.id) ?? []);
                 return (
-                  <div key={report.clientId}>
-                    <Link href={`/safety-ratings/${report.clientId}`}>
-                      <Card className="cursor-pointer hover-elevate" data-testid={`card-rating-${report.clientId}`}>
+                  <div key={client.id}>
+                    <Link href={`/safety-ratings/${client.id}`}>
+                      <Card className="cursor-pointer hover-elevate" data-testid={`card-rating-${client.id}`}>
                         <CardContent className="p-4">
                           <div className="flex items-start gap-4">
                             <div className="flex flex-col items-center justify-center w-8 shrink-0 pt-0.5">
@@ -725,53 +762,80 @@ function SafetyRatingsDashboard() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className="font-medium text-sm truncate">{client.name}</p>
-                                <Badge className={`text-xs ${gradeBadgeClass(report.letterGrade)}`} data-testid={`badge-grade-${report.clientId}`}>
-                                  Grade {report.letterGrade}
-                                </Badge>
-                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                  {trendIcon(history)}
-                                  <span>{formatPeriod(report.periodStart, report.periodEnd)}</span>
-                                </div>
+                                {report ? (
+                                  <>
+                                    <Badge className={`text-xs ${gradeBadgeClass(report.letterGrade)}`} data-testid={`badge-grade-${client.id}`}>
+                                      Grade {report.letterGrade}
+                                    </Badge>
+                                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                      {trendIcon(history)}
+                                      <span>{formatPeriod(report.periodStart, report.periodEnd)}</span>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-no-report-${client.id}`}>No report</Badge>
+                                )}
                               </div>
-                              <CategoryBreakdown report={report} />
+                              {report ? <CategoryBreakdown report={report} /> : (
+                                <p className="text-xs text-muted-foreground mt-1">No safety data on file</p>
+                              )}
                             </div>
                             <div className="flex flex-col items-end gap-1 shrink-0">
-                              <div className="text-2xl font-bold tabular-nums" data-testid={`score-${report.clientId}`}>{report.overallScore}</div>
-                              <div className="text-xs text-muted-foreground">/ 100</div>
+                              {report ? (
+                                <>
+                                  <div className="text-2xl font-bold tabular-nums" data-testid={`score-${client.id}`}>{report.overallScore}</div>
+                                  <div className="text-xs text-muted-foreground">/ 100</div>
+                                </>
+                              ) : (
+                                <div className="text-sm text-muted-foreground tabular-nums" data-testid={`score-${client.id}`}>—</div>
+                              )}
                               <ChevronRight className="h-4 w-4 text-muted-foreground mt-1" />
                             </div>
                           </div>
                         </CardContent>
                       </Card>
                     </Link>
-                    {subs.length > 0 && (
+                    {subClients.length > 0 && (
                       <div className="ml-6 mt-1 space-y-1 border-l-2 border-muted pl-4">
-                        {subs.map(sub => {
-                          const subClient = clientMap.get(sub.clientId);
-                          const subHistory = historyByClient.get(sub.clientId) ?? [];
-                          if (!subClient) return null;
+                        {subClients.map(sub => {
+                          const subReport = latestByClient.get(sub.id);
+                          const subHistory = historyByClient.get(sub.id) ?? [];
                           return (
-                            <Link key={sub.clientId} href={`/safety-ratings/${sub.clientId}`}>
-                              <Card className="cursor-pointer hover-elevate" data-testid={`card-rating-${sub.clientId}`}>
+                            <Link key={sub.id} href={`/safety-ratings/${sub.id}`}>
+                              <Card className="cursor-pointer hover-elevate" data-testid={`card-rating-${sub.id}`}>
                                 <CardContent className="p-3">
                                   <div className="flex items-start gap-3">
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 flex-wrap">
-                                        <p className="font-medium text-sm truncate">{subClient.name}</p>
+                                        <p className="font-medium text-sm truncate">{sub.name}</p>
                                         <Badge variant="outline" className="text-xs">Subcontractor</Badge>
-                                        <Badge className={`text-xs ${gradeBadgeClass(sub.letterGrade)}`} data-testid={`badge-grade-${sub.clientId}`}>
-                                          Grade {sub.letterGrade}
-                                        </Badge>
-                                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                          {trendIcon(subHistory)}
-                                          <span>{formatPeriod(sub.periodStart, sub.periodEnd)}</span>
-                                        </div>
+                                        {subReport ? (
+                                          <>
+                                            <Badge className={`text-xs ${gradeBadgeClass(subReport.letterGrade)}`} data-testid={`badge-grade-${sub.id}`}>
+                                              Grade {subReport.letterGrade}
+                                            </Badge>
+                                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                              {trendIcon(subHistory)}
+                                              <span>{formatPeriod(subReport.periodStart, subReport.periodEnd)}</span>
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-no-report-${sub.id}`}>No report</Badge>
+                                        )}
                                       </div>
-                                      <CategoryBreakdown report={sub} />
+                                      {subReport ? <CategoryBreakdown report={subReport} /> : (
+                                        <p className="text-xs text-muted-foreground mt-1">No safety data on file</p>
+                                      )}
                                     </div>
                                     <div className="flex flex-col items-end gap-1 shrink-0">
-                                      <div className="text-xl font-bold tabular-nums" data-testid={`score-${sub.clientId}`}>{sub.overallScore}</div>
-                                      <div className="text-xs text-muted-foreground">/ 100</div>
+                                      {subReport ? (
+                                        <>
+                                          <div className="text-xl font-bold tabular-nums" data-testid={`score-${sub.id}`}>{subReport.overallScore}</div>
+                                          <div className="text-xs text-muted-foreground">/ 100</div>
+                                        </>
+                                      ) : (
+                                        <div className="text-sm text-muted-foreground tabular-nums" data-testid={`score-${sub.id}`}>—</div>
+                                      )}
                                       <ChevronRight className="h-4 w-4 text-muted-foreground mt-0.5" />
                                     </div>
                                   </div>
