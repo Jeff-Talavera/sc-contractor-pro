@@ -135,14 +135,17 @@ function ClientsList() {
                       <FormField control={form.control} name="parentClientId" render={({ field }) => (
                         <FormItem>
                           <FormLabel>Parent Client (optional — for subcontractors)</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                          <Select
+                            onValueChange={v => field.onChange(v === "__none__" ? "" : v)}
+                            value={field.value || "__none__"}
+                          >
                             <FormControl>
                               <SelectTrigger data-testid="select-parent-client">
                                 <SelectValue placeholder="None — standalone client" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="">None — standalone client</SelectItem>
+                              <SelectItem value="__none__">None — standalone client</SelectItem>
                               {allClients
                                 .filter(c => !c.parentClientId)
                                 .sort((a, b) => a.name.localeCompare(b.name))

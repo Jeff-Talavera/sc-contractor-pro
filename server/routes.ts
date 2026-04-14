@@ -24,9 +24,15 @@ export async function registerRoutes(
     res.json(storage.getUsersByOrg(user.organizationId));
   });
 
-  app.get("/api/clients", (_req, res) => {
+  app.get("/api/clients", (req, res) => {
     const user = storage.getCurrentUser();
-    res.json(storage.getClientsByOrg(user.organizationId));
+    const all = storage.getClientsByOrg(user.organizationId);
+    const { parentClientId } = req.query;
+    if (typeof parentClientId === "string") {
+      res.json(all.filter(c => c.parentClientId === parentClientId));
+    } else {
+      res.json(all);
+    }
   });
 
   app.get("/api/clients/:id", (req, res) => {
