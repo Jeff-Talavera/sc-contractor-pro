@@ -398,11 +398,11 @@ export const insertSafetyReportSchema = z.object({
   permitCompliancePercent: z.number().min(0).max(100),
   topRiskAreas: z.string().default(""),
   recommendedActions: z.string().default(""),
-  photos: z.array(z.string()).default([]),
+  photos: z.array(z.string()).max(10).default([]),
 });
 
 export const updateOrganizationSchema = z.object({
-  logoUrl: z.string().optional(),
+  logoUrl: z.string().nullable().optional(),
 });
 
 export const updateSafetySettingsSchema = z.object({

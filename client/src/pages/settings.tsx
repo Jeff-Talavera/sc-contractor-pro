@@ -26,7 +26,7 @@ export default function SettingsPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (logoUrl: string | null) => {
-      const res = await apiRequest("PUT", "/api/organization", { logoUrl: logoUrl ?? undefined });
+      const res = await apiRequest("PUT", "/api/organization", { logoUrl });
       return res.json();
     },
     onSuccess: () => {

@@ -229,7 +229,7 @@ export class MemStorage implements IStorage {
   updateOrganization(id: string, data: UpdateOrganization): Organization | undefined {
     const org = this.organizations.get(id);
     if (!org) return undefined;
-    if (data.logoUrl !== undefined) org.logoUrl = data.logoUrl;
+    if (data.logoUrl !== undefined) org.logoUrl = data.logoUrl ?? undefined;
     return org;
   }
   getUsersByOrg(orgId: string): User[] { return Array.from(this.users.values()).filter(u => u.organizationId === orgId); }
