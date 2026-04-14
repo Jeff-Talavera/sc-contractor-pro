@@ -17,6 +17,7 @@ export interface User {
 export interface Client {
   id: string;
   organizationId: string;
+  parentClientId?: string;
   name: string;
   contactName: string;
   contactEmail: string;
@@ -144,7 +145,124 @@ export interface JobsiteExternalEvent {
   createdAt: string;
 }
 
+export interface EmployeeProfile {
+  id: string;
+  organizationId: string;
+  userId: string;
+  title: string;
+  phone: string;
+  hireDate: string;
+  status: "Active" | "Inactive" | "On Leave";
+  certifications: string[];
+  licenseNumbers: Record<string, string>;
+  emergencyContact?: string;
+  emergencyPhone?: string;
+  hourlyRate?: number;
+  notes?: string;
+}
+
+export interface ScheduleEntry {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  jobsiteId: string;
+  date: string;
+  shiftStart?: string;
+  shiftEnd?: string;
+  status: "Scheduled" | "Confirmed" | "Completed" | "Cancelled";
+  notes?: string;
+}
+
+export interface Timesheet {
+  id: string;
+  organizationId: string;
+  employeeId: string;
+  weekStartDate: string;
+  status: "Draft" | "Submitted" | "Approved" | "Rejected";
+  submittedAt?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  totalHours: number;
+  notes?: string;
+}
+
+export interface TimesheetEntry {
+  id: string;
+  timesheetId: string;
+  date: string;
+  jobsiteId?: string;
+  hours: number;
+  description?: string;
+}
+
+// ─── Safety Rating ──────────────────────────────────────────────────────────
+
+export interface SafetyReport {
+  id: string;
+  organizationId: string;
+  clientId: string;
+  periodType: "weekly" | "monthly";
+  periodStart: string;
+  periodEnd: string;
+
+  // Normalizing inputs
+  totalManhours: number;
+  totalHeadcount: number;
+  projectRiskTier: "Low" | "Medium" | "High";
+  newHirePercent: number;
+
+  // Lagging indicators
+  recordableIncidents: number;
+  dartCases: number;
+  lostTimeIncidents: number;
+  emr: number;
+  oshaWillfulCitations: number;
+  oshaSeriousCitations: number;
+  oshaOtherCitations: number;
+  openWcClaims: number;
+
+  // Leading indicators
+  inspectionsCompleted: number;
+  inspectionsScheduled: number;
+  correctiveActionsClosed: number;
+  correctiveActionsOpened: number;
+  avgCorrectiveActionDays: number;
+  nearMissReports: number;
+  toolboxTalksCompleted: number;
+  toolboxTalksScheduled: number;
+  certifiedWorkforcePercent: number;
+  jhaCompliancePercent: number;
+  permitCompliancePercent: number;
+
+  // Computed scores (0-100)
+  overallScore: number;
+  incidentHistoryScore: number;
+  trainingComplianceScore: number;
+  hazardManagementScore: number;
+  permitPreTaskScore: number;
+  reportingCultureScore: number;
+  letterGrade: "A" | "B" | "C" | "D";
+
+  // Risk summary
+  topRiskAreas: string;
+  recommendedActions: string;
+
+  createdAt: string;
+}
+
+export interface SafetyReportSettings {
+  organizationId: string;
+  incidentHistoryWeight: number;
+  trainingComplianceWeight: number;
+  hazardManagementWeight: number;
+  permitPreTaskWeight: number;
+  reportingCultureWeight: number;
+}
+
+// ─── Zod schemas ─────────────────────────────────────────────────────────────
+
 export const insertClientSchema = z.object({
+  parentClientId: z.string().optional(),
   name: z.string().min(1, "Name is required"),
   contactName: z.string().min(1, "Contact name is required"),
   contactEmail: z.string().email("Valid email required"),
@@ -209,56 +327,6 @@ export const insertObservationSchema = z.object({
   })).optional(),
 });
 
-export interface EmployeeProfile {
-  id: string;
-  organizationId: string;
-  userId: string;
-  title: string;
-  phone: string;
-  hireDate: string;
-  status: "Active" | "Inactive" | "On Leave";
-  certifications: string[];
-  licenseNumbers: Record<string, string>;
-  emergencyContact?: string;
-  emergencyPhone?: string;
-  hourlyRate?: number;
-  notes?: string;
-}
-
-export interface ScheduleEntry {
-  id: string;
-  organizationId: string;
-  employeeId: string;
-  jobsiteId: string;
-  date: string;
-  shiftStart?: string;
-  shiftEnd?: string;
-  status: "Scheduled" | "Confirmed" | "Completed" | "Cancelled";
-  notes?: string;
-}
-
-export interface Timesheet {
-  id: string;
-  organizationId: string;
-  employeeId: string;
-  weekStartDate: string;
-  status: "Draft" | "Submitted" | "Approved" | "Rejected";
-  submittedAt?: string;
-  approvedBy?: string;
-  approvedAt?: string;
-  totalHours: number;
-  notes?: string;
-}
-
-export interface TimesheetEntry {
-  id: string;
-  timesheetId: string;
-  date: string;
-  jobsiteId?: string;
-  hours: number;
-  description?: string;
-}
-
 export const insertEmployeeProfileSchema = z.object({
   userId: z.string().min(1, "User is required"),
   title: z.string().min(1, "Title is required"),
@@ -297,6 +365,46 @@ export const insertTimesheetEntrySchema = z.object({
   description: z.string().optional(),
 });
 
+export const insertSafetyReportSchema = z.object({
+  clientId: z.string().min(1, "Client is required"),
+  periodType: z.enum(["weekly", "monthly"]),
+  periodStart: z.string().min(1, "Period start is required"),
+  periodEnd: z.string().min(1, "Period end is required"),
+  totalManhours: z.number().min(0),
+  totalHeadcount: z.number().min(0),
+  projectRiskTier: z.enum(["Low", "Medium", "High"]),
+  newHirePercent: z.number().min(0).max(100),
+  recordableIncidents: z.number().min(0),
+  dartCases: z.number().min(0),
+  lostTimeIncidents: z.number().min(0),
+  emr: z.number().min(0),
+  oshaWillfulCitations: z.number().min(0),
+  oshaSeriousCitations: z.number().min(0),
+  oshaOtherCitations: z.number().min(0),
+  openWcClaims: z.number().min(0),
+  inspectionsCompleted: z.number().min(0),
+  inspectionsScheduled: z.number().min(0),
+  correctiveActionsClosed: z.number().min(0),
+  correctiveActionsOpened: z.number().min(0),
+  avgCorrectiveActionDays: z.number().min(0),
+  nearMissReports: z.number().min(0),
+  toolboxTalksCompleted: z.number().min(0),
+  toolboxTalksScheduled: z.number().min(0),
+  certifiedWorkforcePercent: z.number().min(0).max(100),
+  jhaCompliancePercent: z.number().min(0).max(100),
+  permitCompliancePercent: z.number().min(0).max(100),
+  topRiskAreas: z.string().default(""),
+  recommendedActions: z.string().default(""),
+});
+
+export const updateSafetySettingsSchema = z.object({
+  incidentHistoryWeight: z.number().min(0).max(100),
+  trainingComplianceWeight: z.number().min(0).max(100),
+  hazardManagementWeight: z.number().min(0).max(100),
+  permitPreTaskWeight: z.number().min(0).max(100),
+  reportingCultureWeight: z.number().min(0).max(100),
+});
+
 export type InsertClient = z.infer<typeof insertClientSchema>;
 export type InsertJobsite = z.infer<typeof insertJobsiteSchema>;
 export type InsertInspection = z.infer<typeof insertInspectionSchema>;
@@ -306,3 +414,5 @@ export type InsertEmployeeProfile = z.infer<typeof insertEmployeeProfileSchema>;
 export type InsertScheduleEntry = z.infer<typeof insertScheduleEntrySchema>;
 export type InsertTimesheet = z.infer<typeof insertTimesheetSchema>;
 export type InsertTimesheetEntry = z.infer<typeof insertTimesheetEntrySchema>;
+export type InsertSafetyReport = z.infer<typeof insertSafetyReportSchema>;
+export type UpdateSafetySettings = z.infer<typeof updateSafetySettingsSchema>;

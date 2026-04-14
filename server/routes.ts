@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import {
   insertClientSchema, insertJobsiteSchema, insertInspectionSchema, insertObservationSchema,
   insertEmployeeProfileSchema, insertScheduleEntrySchema, insertTimesheetSchema, insertTimesheetEntrySchema,
-  updateInspectionReportSchema
+  updateInspectionReportSchema, insertSafetyReportSchema, updateSafetySettingsSchema
 } from "@shared/schema";
 import type { AiFinding, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
@@ -33,6 +33,10 @@ export async function registerRoutes(
     const client = storage.getClient(req.params.id);
     if (!client) return res.status(404).json({ message: "Client not found" });
     res.json(client);
+  });
+
+  app.get("/api/clients/:id/subcontractors", (req, res) => {
+    res.json(storage.getSubcontractors(req.params.id));
   });
 
   app.post("/api/clients", (req, res) => {
@@ -351,47 +355,55 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
-  app.post("/api/ai/analyze-photo", (_req, res) => {
-    const codeRefs = storage.getCodeReferences();
-    const findingPool: AiFinding[] = [
-      {
-        id: `ai-${Date.now()}-1`,
-        label: "No guardrails at open edge",
-        confidence: 0.92,
-        suggestedCodeReferenceIds: ["BC-3314.1", "BC-3306.5"],
-      },
-      {
-        id: `ai-${Date.now()}-2`,
-        label: "Debris accumulation in walkway",
-        confidence: 0.87,
-        suggestedCodeReferenceIds: ["BC-3316.1"],
-      },
-      {
-        id: `ai-${Date.now()}-3`,
-        label: "Missing toe board on scaffold platform",
-        confidence: 0.79,
-        suggestedCodeReferenceIds: ["BC-3306.1", "BC-3306.5"],
-      },
-      {
-        id: `ai-${Date.now()}-4`,
-        label: "Unsecured construction fence section",
-        confidence: 0.84,
-        suggestedCodeReferenceIds: ["BC-3302.1", "BC-3301.9"],
-      },
-      {
-        id: `ai-${Date.now()}-5`,
-        label: "Workers at height without fall arrest system",
-        confidence: 0.95,
-        suggestedCodeReferenceIds: ["BC-3314.1"],
-      },
-      {
-        id: `ai-${Date.now()}-6`,
-        label: "Sidewalk shed lighting deficiency",
-        confidence: 0.73,
-        suggestedCodeReferenceIds: ["BC-3303.1"],
-      },
-    ];
+  // ─── Safety Reports ──────────────────────────────────────────────────────────
 
+  app.get("/api/safety-reports", (_req, res) => {
+    const user = storage.getCurrentUser();
+    res.json(storage.getSafetyReportsByOrg(user.organizationId));
+  });
+
+  app.get("/api/safety-reports/:id", (req, res) => {
+    const report = storage.getSafetyReport(req.params.id);
+    if (!report) return res.status(404).json({ message: "Report not found" });
+    res.json(report);
+  });
+
+  app.get("/api/safety-reports/client/:clientId", (req, res) => {
+    res.json(storage.getSafetyReportsByClient(req.params.clientId));
+  });
+
+  app.post("/api/safety-reports", (req, res) => {
+    const parsed = insertSafetyReportSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const user = storage.getCurrentUser();
+    const report = storage.createSafetyReport(user.organizationId, parsed.data);
+    res.status(201).json(report);
+  });
+
+  app.get("/api/safety-settings", (_req, res) => {
+    const user = storage.getCurrentUser();
+    res.json(storage.getSafetySettings(user.organizationId));
+  });
+
+  app.put("/api/safety-settings", (req, res) => {
+    const parsed = updateSafetySettingsSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const user = storage.getCurrentUser();
+    const settings = storage.updateSafetySettings(user.organizationId, parsed.data);
+    res.json(settings);
+  });
+
+  // ─── AI Photo Analysis ──────────────────────────────────────────────────────
+
+  app.post("/api/ai/analyze-photo", (_req, res) => {
+    const findingPool: AiFinding[] = [
+      { id: `ai-${Date.now()}-1`, label: "No guardrails at open edge", confidence: 0.92, suggestedCodeReferenceIds: ["BC-3314.1", "BC-3306.5"] },
+      { id: `ai-${Date.now()}-2`, label: "Debris accumulation in walkway", confidence: 0.87, suggestedCodeReferenceIds: ["BC-3316.1"] },
+      { id: `ai-${Date.now()}-3`, label: "Missing toe board on scaffold platform", confidence: 0.79, suggestedCodeReferenceIds: ["BC-3306.1", "BC-3306.5"] },
+      { id: `ai-${Date.now()}-4`, label: "Unsecured construction fence section", confidence: 0.84, suggestedCodeReferenceIds: ["BC-3302.1", "BC-3301.9"] },
+      { id: `ai-${Date.now()}-5`, label: "Workers at height without fall arrest system", confidence: 0.95, suggestedCodeReferenceIds: ["BC-3314.1"] },
+      { id: `ai-${Date.now()}-6`, label: "Sidewalk shed lighting deficiency", confidence: 0.73, suggestedCodeReferenceIds: ["BC-3303.1"] },
+    ];
     const count = 2 + Math.floor(Math.random() * 3);
     const shuffled = findingPool.sort(() => Math.random() - 0.5);
     const findings = shuffled.slice(0, count).map((f, i) => ({
@@ -399,7 +411,6 @@ export async function registerRoutes(
       id: `ai-${Date.now()}-${i}`,
       confidence: Math.round((f.confidence + (Math.random() * 0.1 - 0.05)) * 100) / 100,
     }));
-
     res.json({ findings });
   });
 

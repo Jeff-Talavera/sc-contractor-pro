@@ -19,7 +19,7 @@ Multi-firm construction safety application for safety consulting firms (2-10 ins
 
 ## Data Models
 - **Organization** + **User** (multi-org, role-based: Owner/Admin/Inspector)
-- **Client** + **Jobsite** (with fields: address, city, state, optional BIN/job number for NYC DOB, project type, site flags, monitorPublicRecords toggle)
+- **Client** + **Jobsite** (with fields: address, city, state, optional BIN/job number for NYC DOB, project type, site flags, monitorPublicRecords toggle, `parentClientId` for subcontractor hierarchy)
 - **CodeReference** (Building Code Chapter 33 + Administrative Code sections with tags and plain-English summaries)
 - **InspectionTemplate** + **Inspection** + **Observation** (full inspection workflow with code reference linking)
 - **JobsitePermit** (DOB NOW/BIS/NYC Open Data permit records per jobsite)
@@ -30,6 +30,8 @@ Multi-firm construction safety application for safety consulting firms (2-10 ins
 - **ScheduleEntry** (employee-to-jobsite assignment on a date with shift times and status: Scheduled/Confirmed/Completed/Cancelled)
 - **Timesheet** (weekly timesheet per employee with status: Draft/Submitted/Approved/Rejected, totalHours, approval tracking)
 - **TimesheetEntry** (daily line item on a timesheet: date, jobsite, hours, description)
+- **SafetyReport** (contractor safety data entry per period: lagging + leading indicators, auto-computed scores 0-100 and letter grade A-D)
+- **SafetyReportSettings** (org-level scoring weight configuration, defaults: incident 35%, training 20%, hazard 20%, permit 15%, culture 10%)
 
 ## Features
 
@@ -86,6 +88,19 @@ Multi-firm construction safety application for safety consulting firms (2-10 ins
 - Replace mock permits/events: `server/mockData.ts` → `mockPermits`, `mockExternalEvents` (or add real API calls to NYC Open Data)
 - Add real database: Swap `MemStorage` in `server/storage.ts` with Drizzle ORM or Supabase client
 
+### Safety Ratings (Contractor Safety Rating Report)
+- `/safety-ratings` — ranked dashboard showing all contractors by overall safety score with 5-category breakdown
+- `/safety-ratings/:clientId` — contractor detail page with 4-period trend line chart, category bars, risk summary, report history
+- **Scoring** (auto-calculated on submit): 5 weighted categories — Incident History (35% lagging), Training Compliance (20%), Hazard Management (20%), Permit & Pre-Task (15%), Reporting Culture (10%)
+- **Scoring engine** in `server/storage.ts` → `calculateSafetyScores()`: TRIR, DART, LTIR, EMR, OSHA citations, WC claims for lagging; inspection ratio, CA closure, toolbox talks, certifications, JHA%, permit%, near-miss rate for leading
+- **Letter grades**: A≥90, B≥75, C≥60, D<60
+- **4-step new report wizard**: contractor & period → lagging indicators → leading indicators → risk summary
+- **PDF export**: `client/src/lib/export-safety-report.ts` using jsPDF, dark header, scoring bars, breakdown tables, risk summary
+- **Weight editor** (Weights button): org-level slider panel with must-sum-to-100 validation
+- **Subcontractor support**: Client detail page shows subcontractor section with safety grade badges + Rating shortcut button; `parentClientId` on Client model
+- API routes: `GET/POST /api/safety-reports`, `GET /api/safety-reports/:id`, `GET /api/safety-reports/client/:clientId`, `GET/PUT /api/safety-settings`, `GET /api/clients/:id/subcontractors`
+- Mock data: 9 safety reports across 5 clients (4-period history for Turner Construction), 1 subcontractor (Apex Steel & Frame LLC under Turner)
+
 ## Important Locations
 - Code References: Edit/add entries in `server/mockData.ts` → `mockCodeReferences`
 - Inspection Templates: Edit/add in `server/mockData.ts` → `mockInspectionTemplates`
@@ -93,6 +108,8 @@ Multi-firm construction safety application for safety consulting firms (2-10 ins
 - Current User (mock auth): Edit in `server/mockData.ts` → `currentUser`
 - Permits Mock Data: `server/mockData.ts` → `mockPermits`
 - Events Mock Data: `server/mockData.ts` → `mockExternalEvents`
+- Safety Reports Mock Data: `server/mockData.ts` → `mockSafetyReports`, `mockSafetyReportSettings`
+- Safety Scoring Logic: `server/storage.ts` → `calculateSafetyScores()`
 
 ## Running
 - `npm run dev` starts Express backend + Vite frontend on port 5000

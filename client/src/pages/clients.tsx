@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation, Link } from "wouter";
-import type { Client, Jobsite } from "@shared/schema";
+import type { Client, Jobsite, SafetyReport } from "@shared/schema";
 import { insertClientSchema, insertJobsiteSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Plus, Search, Building2, Mail, Phone, User,
-  ExternalLink,
+  ExternalLink, Users, Shield, ChevronRight,
 } from "lucide-react";
 
 function ClientsList() {
@@ -378,12 +378,58 @@ function AddJobsiteForm({ clientId, onClose }: { clientId: string; onClose: () =
 
 function ClientDetail({ id }: { id: string }) {
   const [showAddJobsite, setShowAddJobsite] = useState(false);
+  const [showAddSubcontractor, setShowAddSubcontractor] = useState(false);
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+
   const { data: client, isLoading } = useQuery<Client>({
     queryKey: ["/api/clients", id],
   });
   const { data: jobsites } = useQuery<Jobsite[]>({
     queryKey: ["/api/clients", id, "jobsites"],
   });
+  const { data: subcontractors } = useQuery<Client[]>({
+    queryKey: ["/api/clients", id, "subcontractors"],
+    queryFn: () => fetch(`/api/clients/${id}/subcontractors`).then(r => r.json()),
+  });
+  const { data: allReports } = useQuery<SafetyReport[]>({ queryKey: ["/api/safety-reports"] });
+
+  const latestReportByClient = new Map<string, SafetyReport>();
+  (allReports ?? []).forEach(r => {
+    const existing = latestReportByClient.get(r.clientId);
+    if (!existing || r.periodStart > existing.periodStart) {
+      latestReportByClient.set(r.clientId, r);
+    }
+  });
+
+  const subForm = useForm({
+    resolver: zodResolver(insertClientSchema),
+    defaultValues: { parentClientId: id, name: "", contactName: "", contactEmail: "", contactPhone: "", notes: "" },
+  });
+
+  const createSubMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/clients", { ...data, parentClientId: id });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clients", id, "subcontractors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      subForm.reset({ parentClientId: id, name: "", contactName: "", contactEmail: "", contactPhone: "", notes: "" });
+      setShowAddSubcontractor(false);
+      toast({ title: "Subcontractor added" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const gradeBadgeClass = (grade: string) => {
+    if (grade === "A") return "bg-green-500/15 text-green-700 dark:text-green-400";
+    if (grade === "B") return "bg-blue-500/15 text-blue-700 dark:text-blue-400";
+    if (grade === "C") return "bg-amber-500/15 text-amber-700 dark:text-amber-400";
+    return "bg-destructive/15 text-destructive";
+  };
 
   if (isLoading) {
     return (
@@ -438,6 +484,116 @@ function ClientDetail({ id }: { id: string }) {
               )}
             </CardContent>
           </Card>
+
+          {subcontractors && subcontractors.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h2 className="text-lg font-semibold" data-testid="text-subcontractors-header">
+                  Subcontractors ({subcontractors.length})
+                </h2>
+                <Button size="sm" variant="outline" onClick={() => setShowAddSubcontractor(true)} data-testid="button-add-subcontractor">
+                  <Plus className="h-4 w-4 mr-1" /> Add Subcontractor
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {subcontractors.map(sub => {
+                  const report = latestReportByClient.get(sub.id);
+                  return (
+                    <div
+                      key={sub.id}
+                      className="cursor-pointer"
+                      onClick={() => setLocation(`/clients/${sub.id}`)}
+                      data-testid={`card-subcontractor-${sub.id}`}
+                    >
+                      <Card className="hover-elevate">
+                        <CardContent className="flex items-center justify-between gap-4 p-4">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium text-sm truncate">{sub.name}</p>
+                              <Badge variant="outline" className="text-xs">Subcontractor</Badge>
+                              {report && (
+                                <Badge className={`text-xs ${gradeBadgeClass(report.letterGrade)}`}>
+                                  Safety Grade {report.letterGrade}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1"><User className="h-3 w-3" /> {sub.contactName}</span>
+                              <span className="flex items-center gap-1"><Mail className="h-3 w-3" /> {sub.contactEmail}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {report && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={e => { e.stopPropagation(); setLocation(`/safety-ratings/${sub.id}`); }}
+                                data-testid={`button-view-rating-${sub.id}`}
+                              >
+                                <Shield className="h-3.5 w-3.5 mr-1" /> Rating
+                              </Button>
+                            )}
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {!subcontractors || subcontractors.length === 0 ? (
+            <div className="flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => setShowAddSubcontractor(true)} data-testid="button-add-subcontractor-empty">
+                <Plus className="h-4 w-4 mr-1" /> Add Subcontractor
+              </Button>
+            </div>
+          ) : null}
+
+          <Dialog open={showAddSubcontractor} onOpenChange={setShowAddSubcontractor}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>New Subcontractor</DialogTitle>
+              </DialogHeader>
+              <Form {...subForm}>
+                <form onSubmit={subForm.handleSubmit((d) => createSubMutation.mutate(d))} className="space-y-4">
+                  <FormField control={subForm.control} name="name" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Company Name</FormLabel>
+                      <FormControl><Input {...field} data-testid="input-sub-name" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={subForm.control} name="contactName" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contact Name</FormLabel>
+                      <FormControl><Input {...field} data-testid="input-sub-contact-name" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={subForm.control} name="contactEmail" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl><Input type="email" {...field} data-testid="input-sub-email" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={subForm.control} name="contactPhone" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone</FormLabel>
+                      <FormControl><Input {...field} data-testid="input-sub-phone" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <Button type="submit" className="w-full" disabled={createSubMutation.isPending} data-testid="button-submit-subcontractor">
+                    {createSubMutation.isPending ? "Adding..." : "Add Subcontractor"}
+                  </Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
 
           <div>
             <div className="flex items-center justify-between gap-2 mb-3">
