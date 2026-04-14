@@ -68,6 +68,10 @@ app.use((req, res, next) => {
     await pool.query("SELECT 1 FROM organizations LIMIT 1");
 
     // Configure session store using same pool
+    const sessionSecret = process.env.SESSION_SECRET;
+    if (!sessionSecret) {
+      console.error("SESSION_SECRET environment variable is not set — sessions will not be secure");
+    }
     const PgStore = connectPgSimple(session);
     app.use(
       session({
@@ -76,7 +80,7 @@ app.use((req, res, next) => {
           createTableIfMissing: true,
           tableName: "sessions",
         }),
-        secret: process.env.SESSION_SECRET || "dev-secret-change-in-production",
+        secret: sessionSecret ?? "unsafe-dev-fallback",
         resave: false,
         saveUninitialized: false,
         cookie: {

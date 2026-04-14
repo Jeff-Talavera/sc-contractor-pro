@@ -32,8 +32,8 @@ export default function LoginPage() {
       await apiRequest("POST", "/api/auth/login", values);
       await queryClient.invalidateQueries({ queryKey: ["/api/me"] });
       navigate("/");
-    } catch (err: any) {
-      const msg = err?.message ?? "";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
       const match = msg.match(/^\d+: (.+)$/);
       setServerError(match ? match[1] : "Something went wrong. Please try again.");
     }
