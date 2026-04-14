@@ -6,7 +6,7 @@ import type {
   SafetyReport, SafetyReportSettings,
   InsertClient, InsertJobsite, InsertInspection, InsertObservation,
   InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry,
-  InsertSafetyReport, UpdateSafetySettings,
+  InsertSafetyReport, UpdateSafetySettings, UpdateOrganization,
   UpdateInspectionReport
 } from "@shared/schema";
 import { randomUUID } from "crypto";
@@ -114,6 +114,7 @@ export function calculateSafetyScores(data: InsertSafetyReport, settings: Safety
 export interface IStorage {
   getCurrentUser(): User;
   getOrganization(id: string): Organization | undefined;
+  updateOrganization(id: string, data: UpdateOrganization): Organization | undefined;
   getUsersByOrg(orgId: string): User[];
   getUser(id: string): User | undefined;
 
@@ -225,6 +226,12 @@ export class MemStorage implements IStorage {
 
   getCurrentUser(): User { return mockCurrentUser; }
   getOrganization(id: string): Organization | undefined { return this.organizations.get(id); }
+  updateOrganization(id: string, data: UpdateOrganization): Organization | undefined {
+    const org = this.organizations.get(id);
+    if (!org) return undefined;
+    if (data.logoUrl !== undefined) org.logoUrl = data.logoUrl;
+    return org;
+  }
   getUsersByOrg(orgId: string): User[] { return Array.from(this.users.values()).filter(u => u.organizationId === orgId); }
   getUser(id: string): User | undefined { return this.users.get(id); }
 

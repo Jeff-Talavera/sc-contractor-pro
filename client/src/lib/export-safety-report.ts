@@ -4,13 +4,21 @@ function splitLines(doc: any, text: string, maxWidth: number): string[] {
   return doc.splitTextToSize(text || "", maxWidth);
 }
 
-function addPageHeader(doc: any, pageWidth: number, orgName: string, reportTitle: string) {
+function addPageHeader(doc: any, pageWidth: number, orgName: string, reportTitle: string, logoBase64?: string) {
   doc.setFillColor(30, 41, 59);
   doc.rect(0, 0, pageWidth, 12, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(7);
   doc.setFont("helvetica", "bold");
-  doc.text(orgName, 10, 8);
+  if (logoBase64) {
+    try {
+      doc.addImage(logoBase64, "PNG", 4, 1.5, 28, 9, undefined, "FAST");
+    } catch {
+      doc.text(orgName, 10, 8);
+    }
+  } else {
+    doc.text(orgName, 10, 8);
+  }
   doc.setFont("helvetica", "normal");
   doc.text(reportTitle, pageWidth - 10, 8, { align: "right" });
   doc.setTextColor(0, 0, 0);
@@ -33,6 +41,13 @@ function gradeColor(grade: string): [number, number, number] {
   if (grade === "B") return [37, 99, 235];
   if (grade === "C") return [234, 179, 8];
   return [220, 38, 38];
+}
+
+function gradeLabel(grade: string): string {
+  if (grade === "A") return "Excellent";
+  if (grade === "B") return "Good";
+  if (grade === "C") return "Needs Improvement";
+  return "Critical — Action Required";
 }
 
 function scoreColor(score: number): [number, number, number] {
@@ -62,6 +77,7 @@ export async function exportSafetyReportPDF(
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 18;
   const contentWidth = pageWidth - margin * 2;
+  const logoBase64 = org.logoUrl || undefined;
 
   const periodLabel = `${new Date(report.periodStart + "T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" })}`;
   const reportTitle = `Contractor Safety Rating — ${periodLabel}`;
@@ -69,44 +85,77 @@ export async function exportSafetyReportPDF(
 
   // ── COVER PAGE ──────────────────────────────────────────────────────────────
   doc.setFillColor(30, 41, 59);
-  doc.rect(0, 0, pageWidth, 50, "F");
+  doc.rect(0, 0, pageWidth, 52, "F");
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(22);
+
+  // Logo in cover header
+  if (logoBase64) {
+    try {
+      doc.addImage(logoBase64, "PNG", margin, 8, 50, 16, undefined, "FAST");
+    } catch {
+      doc.setFontSize(20);
+      doc.setFont("helvetica", "bold");
+      doc.text(org.name, margin, 22);
+    }
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text("Contractor Safety Rating Report", margin, 32);
+    doc.setFontSize(8.5);
+    doc.text(reportTitle, margin, 39);
+    doc.text(client.name, margin, 46);
+  } else {
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.text(org.name, margin, 20);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text("Contractor Safety Rating Report", margin, 30);
+    doc.setFontSize(8.5);
+    doc.text(reportTitle, margin, 38);
+    doc.text(client.name, margin, 45);
+  }
+  doc.setTextColor(0, 0, 0);
+
+  let y = 68;
+
+  // ── PERFORMANCE BANNER ──────────────────────────────────────────────────────
+  const gc = gradeColor(report.letterGrade);
+  const sc = scoreColor(report.overallScore);
+  const descriptor = gradeLabel(report.letterGrade);
+
+  // Banner background
+  doc.setFillColor(...gc);
+  doc.rect(margin - 4, y - 4, contentWidth + 8, 26, "F");
+
+  // Score circle
+  doc.setFillColor(...sc);
+  doc.circle(margin + 10, y + 9, 11, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text(org.name, margin, 20);
+  doc.text(`${report.overallScore}`, margin + 10, y + 11, { align: "center" });
+  doc.setFontSize(5.5);
+  doc.text("SCORE", margin + 10, y + 16, { align: "center" });
+
+  // Grade
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(28);
+  doc.setFont("helvetica", "bold");
+  doc.text(report.letterGrade, margin + 28, y + 14);
+
+  // Descriptor
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text("Contractor Safety Rating Report", margin, 30);
-  doc.setFontSize(8.5);
-  doc.text(reportTitle, margin, 38);
-  doc.text(client.name, margin, 45);
-  doc.setTextColor(0, 0, 0);
+  doc.text(descriptor, margin + 44, y + 8);
 
-  let y = 65;
-
-  // Grade badge
-  const gc = gradeColor(report.letterGrade);
-  doc.setFillColor(...gc);
-  doc.roundedRect(pageWidth - margin - 36, 55, 36, 30, 4, 4, "F");
+  // Period label
+  doc.setFontSize(7.5);
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(22);
-  doc.setFont("helvetica", "bold");
-  doc.text(report.letterGrade, pageWidth - margin - 18, 72, { align: "center" });
-  doc.setFontSize(7);
-  doc.text("GRADE", pageWidth - margin - 18, 80, { align: "center" });
-  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "normal");
+  doc.text(periodLabel, margin + 44, y + 17);
 
-  // Overall score
-  const sc = scoreColor(report.overallScore);
-  doc.setFillColor(...sc);
-  doc.roundedRect(pageWidth - margin - 80, 55, 36, 30, 4, 4, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(22);
-  doc.setFont("helvetica", "bold");
-  doc.text(`${report.overallScore}`, pageWidth - margin - 62, 72, { align: "center" });
-  doc.setFontSize(7);
-  doc.text("SCORE", pageWidth - margin - 62, 80, { align: "center" });
   doc.setTextColor(0, 0, 0);
+  y += 35;
 
   // Summary table
   const summaryRows: [string, string][] = [
@@ -143,7 +192,7 @@ export async function exportSafetyReportPDF(
 
   // ── PAGE 2: SCORING BREAKDOWN ───────────────────────────────────────────────
   doc.addPage();
-  addPageHeader(doc, pageWidth, org.name, reportTitle);
+  addPageHeader(doc, pageWidth, org.name, reportTitle, logoBase64);
   y = 22;
 
   doc.setFontSize(13);
@@ -210,7 +259,7 @@ export async function exportSafetyReportPDF(
 
   // ── LAGGING INDICATORS ──────────────────────────────────────────────────────
   y = checkPage(doc, y, 50, margin);
-  if (y === margin) { addPageHeader(doc, pageWidth, org.name, reportTitle); y = 22; }
+  if (y === margin) { addPageHeader(doc, pageWidth, org.name, reportTitle, logoBase64); y = 22; }
 
   doc.setFillColor(30, 41, 59);
   doc.rect(margin - 4, y - 3, contentWidth + 8, 11, "F");
@@ -259,7 +308,7 @@ export async function exportSafetyReportPDF(
 
   // ── LEADING INDICATORS ──────────────────────────────────────────────────────
   y = checkPage(doc, y, 14, margin);
-  if (y === margin) { addPageHeader(doc, pageWidth, org.name, reportTitle); y = 22; }
+  if (y === margin) { addPageHeader(doc, pageWidth, org.name, reportTitle, logoBase64); y = 22; }
 
   doc.setFillColor(30, 41, 59);
   doc.rect(margin - 4, y - 3, contentWidth + 8, 11, "F");
@@ -307,7 +356,7 @@ export async function exportSafetyReportPDF(
   // ── RISK SUMMARY ────────────────────────────────────────────────────────────
   if (report.topRiskAreas || report.recommendedActions) {
     y = checkPage(doc, y, 40, margin);
-    if (y === margin) { addPageHeader(doc, pageWidth, org.name, reportTitle); y = 22; }
+    if (y === margin) { addPageHeader(doc, pageWidth, org.name, reportTitle, logoBase64); y = 22; }
 
     doc.setFillColor(30, 41, 59);
     doc.rect(margin - 4, y - 3, contentWidth + 8, 11, "F");
@@ -338,6 +387,62 @@ export async function exportSafetyReportPDF(
       const recLines = splitLines(doc, report.recommendedActions, contentWidth);
       doc.text(recLines, margin + 4, y);
       y += recLines.length * 4.5 + 4;
+    }
+  }
+
+  // ── PHOTO DOCUMENTATION ─────────────────────────────────────────────────────
+  const photos = report.photos ?? [];
+  if (photos.length > 0) {
+    doc.addPage();
+    addPageHeader(doc, pageWidth, org.name, reportTitle, logoBase64);
+    y = 22;
+
+    doc.setFillColor(30, 41, 59);
+    doc.rect(margin - 4, y - 3, contentWidth + 8, 11, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text(`SITE PHOTO DOCUMENTATION (${photos.length} photo${photos.length !== 1 ? "s" : ""})`, margin, y + 5);
+    doc.setTextColor(0, 0, 0);
+    y += 16;
+
+    const cols = 2;
+    const imgW = (contentWidth - 6) / cols;
+    const imgH = imgW * 0.65;
+
+    for (let i = 0; i < photos.length; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      if (row > 0 && col === 0) {
+        y += imgH + 8;
+      }
+      const x = margin + col * (imgW + 6);
+
+      y = checkPage(doc, y, imgH + 12, margin);
+      if (y === margin) {
+        addPageHeader(doc, pageWidth, org.name, reportTitle, logoBase64);
+        y = 22;
+      }
+
+      try {
+        const src = photos[i];
+        const ext = src.startsWith("data:image/png") ? "PNG" : "JPEG";
+        doc.addImage(src, ext, x, y, imgW, imgH, undefined, "MEDIUM");
+        doc.setDrawColor(200, 200, 200);
+        doc.rect(x, y, imgW, imgH);
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Photo ${i + 1}`, x, y + imgH + 4);
+        doc.setTextColor(0, 0, 0);
+      } catch {
+        doc.setFillColor(240, 240, 240);
+        doc.rect(x, y, imgW, imgH, "F");
+        doc.setFontSize(7);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`Photo ${i + 1}`, x + imgW / 2, y + imgH / 2, { align: "center" });
+        doc.setTextColor(0, 0, 0);
+      }
     }
   }
 

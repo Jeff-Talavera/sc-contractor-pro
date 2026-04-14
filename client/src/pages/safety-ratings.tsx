@@ -26,7 +26,7 @@ import {
 import {
   Shield, ArrowLeft, Plus, Search, Download, Settings2,
   TrendingUp, TrendingDown, Minus, AlertTriangle, ChevronRight,
-  Users, HardHat, ClipboardCheck, Activity
+  Users, HardHat, ClipboardCheck, Activity, Camera, X, ImageIcon
 } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -191,6 +191,7 @@ function NewReportDialog({
       permitCompliancePercent: 0,
       topRiskAreas: "",
       recommendedActions: "",
+      photos: [],
     },
   });
 
@@ -217,6 +218,7 @@ function NewReportDialog({
     "Lagging Indicators",
     "Leading Indicators",
     "Risk Summary",
+    "Photos (Optional)",
   ];
 
   return (
@@ -411,6 +413,88 @@ function NewReportDialog({
               </div>
             )}
 
+            {step === 5 && (
+              <div className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Attach up to 10 site photos as documentation. These will appear in the exported PDF report.
+                </p>
+                <FormField control={form.control} name="photos" render={({ field }) => {
+                  const photos: string[] = field.value ?? [];
+                  const handleAddPhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
+                    const files = Array.from(e.target.files ?? []);
+                    const remaining = 10 - photos.length;
+                    const toRead = files.slice(0, remaining);
+                    let loaded = 0;
+                    const newPhotos: string[] = [];
+                    toRead.forEach(file => {
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        newPhotos.push(ev.target?.result as string);
+                        loaded++;
+                        if (loaded === toRead.length) {
+                          field.onChange([...photos, ...newPhotos]);
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    });
+                    e.target.value = "";
+                  };
+                  return (
+                    <FormItem>
+                      <div className="flex items-center justify-between mb-2">
+                        <FormLabel>Site Photos ({photos.length}/10)</FormLabel>
+                        {photos.length < 10 && (
+                          <label className="cursor-pointer" data-testid="button-add-photos">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              onChange={handleAddPhotos}
+                            />
+                            <span className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                              <Camera className="h-3.5 w-3.5" /> Add Photos
+                            </span>
+                          </label>
+                        )}
+                      </div>
+                      {photos.length === 0 ? (
+                        <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-border rounded-lg bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors" data-testid="photos-drop-zone">
+                          <input type="file" accept="image/*" multiple className="hidden" onChange={handleAddPhotos} />
+                          <ImageIcon className="h-8 w-8 text-muted-foreground opacity-40 mb-1" />
+                          <span className="text-sm text-muted-foreground">Click to add site photos</span>
+                          <span className="text-xs text-muted-foreground opacity-60">Up to 10 images</span>
+                        </label>
+                      ) : (
+                        <div className="grid grid-cols-4 gap-2">
+                          {photos.map((src, i) => (
+                            <div key={i} className="relative group rounded-md overflow-hidden border border-border aspect-square bg-muted/20" data-testid={`photo-thumb-${i}`}>
+                              <img src={src} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => field.onChange(photos.filter((_, j) => j !== i))}
+                                className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                data-testid={`button-remove-photo-${i}`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                          {photos.length < 10 && (
+                            <label className="flex items-center justify-center rounded-md border-2 border-dashed border-border aspect-square cursor-pointer hover:bg-muted/40 transition-colors bg-muted/10">
+                              <input type="file" accept="image/*" multiple className="hidden" onChange={handleAddPhotos} />
+                              <Plus className="h-5 w-5 text-muted-foreground" />
+                            </label>
+                          )}
+                        </div>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }} />
+              </div>
+            )}
+
             <div className="flex gap-2 pt-2">
               {step > 1 && (
                 <Button type="button" variant="secondary" onClick={() => setStep(s => s - 1)} className="flex-1" data-testid="button-report-back">
@@ -426,6 +510,7 @@ function NewReportDialog({
                       ["clientId", "periodType", "periodStart", "periodEnd", "totalManhours", "totalHeadcount", "projectRiskTier", "newHirePercent"],
                       ["recordableIncidents", "dartCases", "lostTimeIncidents", "emr", "oshaWillfulCitations", "oshaSeriousCitations", "oshaOtherCitations", "openWcClaims"],
                       ["inspectionsCompleted", "inspectionsScheduled", "correctiveActionsClosed", "correctiveActionsOpened", "avgCorrectiveActionDays", "nearMissReports", "toolboxTalksCompleted", "toolboxTalksScheduled", "certifiedWorkforcePercent", "jhaCompliancePercent", "permitCompliancePercent"],
+                      [],
                       [],
                     ];
                     const valid = await form.trigger(fields[step - 1]);
@@ -865,6 +950,8 @@ function SafetyRatingsDashboard() {
 function ContractorSafetyDetail({ clientId }: { clientId: string }) {
   const [showNewReport, setShowNewReport] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadingSubId, setDownloadingSubId] = useState<string | null>(null);
+  const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
   const { toast } = useToast();
 
   const { data: reports, isLoading } = useQuery<SafetyReport[]>({
@@ -873,9 +960,11 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
   });
   const { data: client } = useQuery<Client>({ queryKey: ["/api/clients", clientId] });
   const { data: allClients } = useQuery<Client[]>({ queryKey: ["/api/clients"] });
+  const { data: allReports } = useQuery<SafetyReport[]>({ queryKey: ["/api/safety-reports"] });
   const parentClient = client?.parentClientId
     ? allClients?.find(c => c.id === client.parentClientId)
     : undefined;
+  const subcontractors = allClients?.filter(c => c.parentClientId === clientId) ?? [];
   const { data: meData } = useQuery<{ user: { role: string }; organization: Organization }>({ queryKey: ["/api/me"] });
   const isAdmin = meData?.user?.role === "Owner" || meData?.user?.role === "Admin";
 
@@ -898,6 +987,18 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
       toast({ title: "Export failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const handleDownloadSub = async (sub: Client, subReport: SafetyReport) => {
+    if (!meData?.organization) return;
+    setDownloadingSubId(subReport.id);
+    try {
+      await exportSafetyReportPDF(subReport, sub, meData.organization, client ?? undefined);
+    } catch (err: unknown) {
+      toast({ title: "Export failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setDownloadingSubId(null);
     }
   };
 
@@ -1057,6 +1158,84 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
             </Card>
           )}
 
+          {latest && latest.photos && latest.photos.length > 0 && (
+            <Card data-testid="card-photo-docs">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Camera className="h-4 w-4 text-muted-foreground" />
+                  Site Photo Documentation ({latest.photos.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                  {latest.photos.map((src, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="rounded-md overflow-hidden border border-border aspect-square bg-muted/20 hover:opacity-80 transition-opacity focus:outline-none focus:ring-2 focus:ring-ring"
+                      onClick={() => setExpandedPhoto(src)}
+                      data-testid={`photo-thumb-detail-${i}`}
+                    >
+                      <img src={src} alt={`Site photo ${i + 1}`} className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {subcontractors.length > 0 && (
+            <Card data-testid="card-subcontractors">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  Subcontractors ({subcontractors.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {subcontractors.map(sub => {
+                  const subReports = (allReports ?? [])
+                    .filter(r => r.clientId === sub.id)
+                    .sort((a, b) => b.periodStart.localeCompare(a.periodStart));
+                  const latestSubReport = subReports[0] ?? null;
+                  return (
+                    <div key={sub.id} className="flex items-center gap-4 p-3 rounded-lg border border-border bg-muted/10">
+                      <div className="flex-1 min-w-0">
+                        <Link href={`/safety-ratings/${sub.id}`}>
+                          <span className="text-sm font-medium hover:underline cursor-pointer" data-testid={`link-sub-${sub.id}`}>{sub.name}</span>
+                        </Link>
+                        {latestSubReport ? (
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <Badge className={`text-xs ${gradeBadgeClass(latestSubReport.letterGrade)}`}>
+                              {latestSubReport.letterGrade}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">{latestSubReport.overallScore} pts</span>
+                            <span className="text-xs text-muted-foreground">·</span>
+                            <span className="text-xs text-muted-foreground">{formatPeriod(latestSubReport.periodStart, latestSubReport.periodEnd)}</span>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground mt-0.5">No reports yet</p>
+                        )}
+                      </div>
+                      {latestSubReport && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDownloadSub(sub, latestSubReport)}
+                          disabled={downloadingSubId === latestSubReport.id}
+                          data-testid={`button-download-sub-${sub.id}`}
+                        >
+                          <Download className="h-3.5 w-3.5 mr-1" />
+                          {downloadingSubId === latestSubReport.id ? "..." : "PDF"}
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+
           <div>
             <h2 className="text-lg font-semibold mb-3" data-testid="text-report-history">
               Report History ({reports?.length ?? 0})
@@ -1106,6 +1285,14 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
       </div>
 
       <NewReportDialog defaultClientId={clientId} open={showNewReport} onOpenChange={setShowNewReport} />
+
+      {expandedPhoto && (
+        <Dialog open={!!expandedPhoto} onOpenChange={() => setExpandedPhoto(null)}>
+          <DialogContent className="max-w-3xl p-2 bg-black border-0">
+            <img src={expandedPhoto} alt="Expanded site photo" className="w-full h-auto max-h-[80vh] object-contain rounded" data-testid="img-photo-expanded" />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

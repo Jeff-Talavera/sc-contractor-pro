@@ -865,6 +865,7 @@ export const mockSafetyReports: SafetyReport[] = [
     hazardManagementScore: 88, permitPreTaskScore: 94, reportingCultureScore: 81,
     letterGrade: "B", topRiskAreas: "Fall protection, Crane operations",
     recommendedActions: "Increase fall protection audits; review crane pre-lift checklists.",
+    photos: [],
     createdAt: "2026-04-02T09:00:00Z",
   },
   {
@@ -881,6 +882,7 @@ export const mockSafetyReports: SafetyReport[] = [
     hazardManagementScore: 74, permitPreTaskScore: 86, reportingCultureScore: 70,
     letterGrade: "C", topRiskAreas: "Incident rate, OSHA citation",
     recommendedActions: "Implement targeted fall protection toolbox talks; expedite corrective action closure.",
+    photos: [],
     createdAt: "2026-03-04T09:00:00Z",
   },
   {
@@ -897,6 +899,7 @@ export const mockSafetyReports: SafetyReport[] = [
     hazardManagementScore: 64, permitPreTaskScore: 80, reportingCultureScore: 59,
     letterGrade: "C", topRiskAreas: "Incident rate, training gaps",
     recommendedActions: "Conduct new-hire orientation blitz; review incident investigation findings.",
+    photos: [],
     createdAt: "2026-02-05T09:00:00Z",
   },
   {
@@ -913,6 +916,7 @@ export const mockSafetyReports: SafetyReport[] = [
     hazardManagementScore: 55, permitPreTaskScore: 74, reportingCultureScore: 47,
     letterGrade: "D", topRiskAreas: "Incident history, permit compliance, near-miss underreporting",
     recommendedActions: "Launch safety culture initiative; add compliance monitoring checkpoints.",
+    photos: [],
     createdAt: "2026-01-06T09:00:00Z",
   },
   {
@@ -929,6 +933,7 @@ export const mockSafetyReports: SafetyReport[] = [
     hazardManagementScore: 97, permitPreTaskScore: 99, reportingCultureScore: 93,
     letterGrade: "A", topRiskAreas: "None identified",
     recommendedActions: "Maintain current program. Consider sharing best practices with other contractors.",
+    photos: [],
     createdAt: "2026-04-01T09:00:00Z",
   },
   {
@@ -945,6 +950,7 @@ export const mockSafetyReports: SafetyReport[] = [
     hazardManagementScore: 94, permitPreTaskScore: 97, reportingCultureScore: 88,
     letterGrade: "A", topRiskAreas: "None identified",
     recommendedActions: "Continue monitoring near-miss reporting trend.",
+    photos: [],
     createdAt: "2026-03-03T09:00:00Z",
   },
   {
@@ -961,6 +967,7 @@ export const mockSafetyReports: SafetyReport[] = [
     hazardManagementScore: 70, permitPreTaskScore: 83, reportingCultureScore: 66,
     letterGrade: "C", topRiskAreas: "EMR above 1.0, OSHA citation, corrective action backlog",
     recommendedActions: "Address corrective action backlog; improve certification rate.",
+    photos: [],
     createdAt: "2026-04-03T09:00:00Z",
   },
   {
@@ -977,6 +984,7 @@ export const mockSafetyReports: SafetyReport[] = [
     hazardManagementScore: 91, permitPreTaskScore: 94, reportingCultureScore: 86,
     letterGrade: "A", topRiskAreas: "Minor citation, near-miss opportunity",
     recommendedActions: "Review the minor citation finding; maintain strong certification rate.",
+    photos: [],
     createdAt: "2026-04-01T09:00:00Z",
   },
   {
@@ -993,6 +1001,7 @@ export const mockSafetyReports: SafetyReport[] = [
     hazardManagementScore: 46, permitPreTaskScore: 66, reportingCultureScore: 38,
     letterGrade: "D", topRiskAreas: "High incident rate, low certification, OSHA citation, EMR above 1.3",
     recommendedActions: "Immediate corrective action plan required. Halt non-essential operations pending safety review.",
+    photos: [],
     createdAt: "2026-04-04T09:00:00Z",
   },
 ];

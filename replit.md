@@ -30,8 +30,9 @@ Multi-firm construction safety application for safety consulting firms (2-10 ins
 - **ScheduleEntry** (employee-to-jobsite assignment on a date with shift times and status: Scheduled/Confirmed/Completed/Cancelled)
 - **Timesheet** (weekly timesheet per employee with status: Draft/Submitted/Approved/Rejected, totalHours, approval tracking)
 - **TimesheetEntry** (daily line item on a timesheet: date, jobsite, hours, description)
-- **SafetyReport** (contractor safety data entry per period: lagging + leading indicators, auto-computed scores 0-100 and letter grade A-D)
+- **SafetyReport** (contractor safety data entry per period: lagging + leading indicators, auto-computed scores 0-100 and letter grade A-D, `photos: string[]` base64 attachments up to 10)
 - **SafetyReportSettings** (org-level scoring weight configuration, defaults: incident 35%, training 20%, hazard 20%, permit 15%, culture 10%)
+- **Organization** extended with `logoUrl?: string` (stored as base64 data URI)
 
 ## Features
 
@@ -98,7 +99,13 @@ Multi-firm construction safety application for safety consulting firms (2-10 ins
 - **PDF export**: `client/src/lib/export-safety-report.ts` using jsPDF, dark header, scoring bars, breakdown tables, risk summary
 - **Weight editor** (Weights button): org-level slider panel with must-sum-to-100 validation
 - **Subcontractor support**: Client detail page shows subcontractor section with safety grade badges + Rating shortcut button; `parentClientId` on Client model
-- API routes: `GET/POST /api/safety-reports`, `GET /api/safety-reports/:id`, `GET /api/safety-reports/client/:clientId`, `GET/PUT /api/safety-settings`, `GET /api/clients/:id/subcontractors`
+- API routes: `GET/POST /api/safety-reports`, `GET /api/safety-reports/:id`, `GET /api/safety-reports/client/:clientId`, `GET/PUT /api/safety-settings`, `GET /api/clients/:id/subcontractors`, `PUT /api/organization`
+- New Report wizard: 5-step flow (Contractor & Period → Lagging Indicators → Leading Indicators → Risk Summary → Photos)
+- Photo attachments: up to 10 base64 images per report, displayed as thumbnails with lightbox on detail page
+- Photo documentation section added to PDF export
+- Subcontractors section on parent contractor detail page: latest report grade + PDF download button per sub
+- Organization Settings page (`/settings`): logo upload (FileReader → base64), stored via `PUT /api/organization`, displayed on Settings page; logo embedded in PDF report header and cover
+- PDF performance banner: full-width colored banner showing grade, score, descriptor (Excellent / Good / Needs Improvement / Critical)
 - Mock data: 9 safety reports across 5 clients (4-period history for Turner Construction), 1 subcontractor (Apex Steel & Frame LLC under Turner)
 
 ## Important Locations

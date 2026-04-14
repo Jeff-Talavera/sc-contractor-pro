@@ -247,6 +247,9 @@ export interface SafetyReport {
   topRiskAreas: string;
   recommendedActions: string;
 
+  // Photo attachments (base64 data URIs)
+  photos: string[];
+
   createdAt: string;
 }
 
@@ -395,6 +398,11 @@ export const insertSafetyReportSchema = z.object({
   permitCompliancePercent: z.number().min(0).max(100),
   topRiskAreas: z.string().default(""),
   recommendedActions: z.string().default(""),
+  photos: z.array(z.string()).default([]),
+});
+
+export const updateOrganizationSchema = z.object({
+  logoUrl: z.string().optional(),
 });
 
 export const updateSafetySettingsSchema = z.object({
@@ -422,3 +430,4 @@ export type InsertTimesheet = z.infer<typeof insertTimesheetSchema>;
 export type InsertTimesheetEntry = z.infer<typeof insertTimesheetEntrySchema>;
 export type InsertSafetyReport = z.infer<typeof insertSafetyReportSchema>;
 export type UpdateSafetySettings = z.infer<typeof updateSafetySettingsSchema>;
+export type UpdateOrganization = z.infer<typeof updateOrganizationSchema>;

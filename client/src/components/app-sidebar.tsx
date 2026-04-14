@@ -8,6 +8,7 @@ import {
   HardHat,
   UserCog,
   Shield,
+  Settings,
 } from "lucide-react";
 import {
   Sidebar,
@@ -30,6 +31,7 @@ const navItems = [
   { title: "Code Library", url: "/code-library", icon: BookOpen },
   { title: "Workforce", url: "/workforce", icon: UserCog },
   { title: "Safety Ratings", url: "/safety-ratings", icon: Shield },
+  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {

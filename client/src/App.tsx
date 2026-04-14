@@ -13,6 +13,7 @@ import InspectionsPage from "@/pages/inspections";
 import CodeLibraryPage from "@/pages/code-library";
 import WorkforcePage from "@/pages/workforce";
 import SafetyRatingsPage from "@/pages/safety-ratings";
+import SettingsPage from "@/pages/settings";
 import { HardHat } from "lucide-react";
 import type { User, Organization } from "@shared/schema";
 
@@ -23,6 +24,7 @@ const routePageNames: Array<[string, string]> = [
   ["/code-library", "Code Library"],
   ["/workforce", "Workforce"],
   ["/safety-ratings", "Safety Ratings"],
+  ["/settings", "Settings"],
   ["/", "Dashboard"],
 ];
 
@@ -104,6 +106,7 @@ function Router() {
       <Route path="/workforce/:id" component={WorkforcePage} />
       <Route path="/safety-ratings" component={SafetyRatingsPage} />
       <Route path="/safety-ratings/:clientId" component={SafetyRatingsPage} />
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );

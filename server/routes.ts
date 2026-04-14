@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import {
   insertClientSchema, insertJobsiteSchema, insertInspectionSchema, insertObservationSchema,
   insertEmployeeProfileSchema, insertScheduleEntrySchema, insertTimesheetSchema, insertTimesheetEntrySchema,
-  updateInspectionReportSchema, insertSafetyReportSchema, updateSafetySettingsSchema
+  updateInspectionReportSchema, insertSafetyReportSchema, updateSafetySettingsSchema, updateOrganizationSchema
 } from "@shared/schema";
 import type { AiFinding, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
@@ -17,6 +17,18 @@ export async function registerRoutes(
     const user = storage.getCurrentUser();
     const org = storage.getOrganization(user.organizationId);
     res.json({ user, organization: org });
+  });
+
+  app.put("/api/organization", (req, res) => {
+    const user = storage.getCurrentUser();
+    if (user.role !== "Owner" && user.role !== "Admin") {
+      return res.status(403).json({ message: "Admin or Owner role required" });
+    }
+    const parsed = updateOrganizationSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const updated = storage.updateOrganization(user.organizationId, parsed.data);
+    if (!updated) return res.status(404).json({ message: "Organization not found" });
+    res.json(updated);
   });
 
   app.get("/api/users", (_req, res) => {
