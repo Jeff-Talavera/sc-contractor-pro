@@ -5,13 +5,17 @@ Multi-firm construction safety application for safety consulting firms (2-10 ins
 
 ## Architecture
 - **Frontend**: React + TypeScript with Vite, TanStack Query, wouter routing, shadcn/ui components
-- **Backend**: Express.js with in-memory storage (prepared for future database integration)
-- **Data**: In-memory storage with mock/seed data - structured for easy swap to Supabase or PostgreSQL
+- **Backend**: Express.js with Drizzle ORM, PostgreSQL (Replit built-in via `pg` Pool)
+- **Data**: PostgreSQL with Drizzle ORM; seed data loaded once on first startup from `server/mockData.ts`
+- **Schema**: Drizzle table definitions in `shared/tables.ts`; Zod schemas & TS interfaces in `shared/schema.ts`
 
 ## Key Files
 - `shared/schema.ts` - All TypeScript interfaces and Zod validation schemas
 - `server/mockData.ts` - All seed/mock data (organizations, users, clients, jobsites, code references, templates, inspections, observations, permits, external events)
-- `server/storage.ts` - Storage interface (IStorage) and in-memory implementation
+- `shared/tables.ts` - Drizzle ORM table definitions for all 16 tables
+- `server/db.ts` - Drizzle + pg Pool connection using DATABASE_URL
+- `server/storage.ts` - Storage interface (IStorage, fully async) and DatabaseStorage implementation
+- `server/seed.ts` - Idempotent seed function (exported, called on startup)
 - `server/routes.ts` - All API routes prefixed with /api, including mock AI analysis endpoint
 - `client/src/components/disclaimer.tsx` - Shared disclaimer text component
 - `client/src/components/app-sidebar.tsx` - Navigation sidebar

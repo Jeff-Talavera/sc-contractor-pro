@@ -10,14 +10,9 @@ import type {
   UpdateInspectionReport
 } from "@shared/schema";
 import { randomUUID } from "crypto";
-import {
-  mockOrganizations, mockUsers, currentUser as mockCurrentUser,
-  mockClients, mockJobsites, mockCodeReferences,
-  mockInspectionTemplates, mockInspections, mockObservations,
-  mockPermits, mockExternalEvents,
-  mockEmployeeProfiles, mockScheduleEntries, mockTimesheets, mockTimesheetEntries,
-  mockSafetyReports, mockSafetyReportSettings
-} from "./mockData";
+import { db } from "./db";
+import * as t from "@shared/tables";
+import { eq, and, gte, lte } from "drizzle-orm";
 
 // ─── Scoring logic ────────────────────────────────────────────────────────────
 
@@ -33,7 +28,6 @@ export function calculateSafetyScores(data: InsertSafetyReport, settings: Safety
   const mh = Math.max(data.totalManhours, 1);
   const hc = Math.max(data.totalHeadcount, 1);
 
-  // ── Incident History (lagging) ────────────────────────────────────────────
   const trir = (data.recordableIncidents / mh) * 200000;
   const trirScore = clamp(100 - trir * 25, 0, 100);
 
@@ -45,7 +39,7 @@ export function calculateSafetyScores(data: InsertSafetyReport, settings: Safety
 
   const emrScore = data.emr > 0
     ? clamp((1.5 - data.emr) / 0.7 * 100, 0, 100)
-    : 80; // neutral if not entered
+    : 80;
 
   const citationScore = clamp(
     100 - data.oshaWillfulCitations * 40 - data.oshaSeriousCitations * 15 - data.oshaOtherCitations * 5,
@@ -58,14 +52,12 @@ export function calculateSafetyScores(data: InsertSafetyReport, settings: Safety
     (trirScore + dartScore + ltirScore + emrScore + citationScore + wcScore) / 6
   );
 
-  // ── Training Compliance (leading) ─────────────────────────────────────────
   const certScore = data.certifiedWorkforcePercent;
   const toolboxScore = data.toolboxTalksScheduled > 0
     ? clamp(safeDivide(data.toolboxTalksCompleted, data.toolboxTalksScheduled) * 100, 0, 100)
     : 100;
   const trainingComplianceScore = Math.round((certScore + toolboxScore) / 2);
 
-  // ── Hazard Management (leading) ───────────────────────────────────────────
   const inspectionRatioScore = data.inspectionsScheduled > 0
     ? clamp(safeDivide(data.inspectionsCompleted, data.inspectionsScheduled) * 100, 0, 100)
     : 100;
@@ -75,14 +67,11 @@ export function calculateSafetyScores(data: InsertSafetyReport, settings: Safety
   const caTimeScore = clamp(100 - (data.avgCorrectiveActionDays / 30) * 100, 0, 100);
   const hazardManagementScore = Math.round((inspectionRatioScore + caClosureScore + caTimeScore) / 3);
 
-  // ── Permit & Pre-Task (leading) ───────────────────────────────────────────
   const permitPreTaskScore = Math.round((data.jhaCompliancePercent + data.permitCompliancePercent) / 2);
 
-  // ── Reporting Culture (leading) ───────────────────────────────────────────
   const nearMissRate = (data.nearMissReports / hc) * 100;
   const reportingCultureScore = Math.round(clamp(30 + (Math.min(nearMissRate, 3) / 3) * 70, 0, 100));
 
-  // ── Overall ───────────────────────────────────────────────────────────────
   const total = settings.incidentHistoryWeight + settings.trainingComplianceWeight +
     settings.hazardManagementWeight + settings.permitPreTaskWeight + settings.reportingCultureWeight;
   const safeTotal = total > 0 ? total : 100;
@@ -109,342 +98,654 @@ export function calculateSafetyScores(data: InsertSafetyReport, settings: Safety
   };
 }
 
+// ─── Row mappers ──────────────────────────────────────────────────────────────
+
+function mapOrg(row: typeof t.organizations.$inferSelect): Organization {
+  return { id: row.id, name: row.name, logoUrl: row.logoUrl ?? undefined };
+}
+
+function mapUser(row: typeof t.users.$inferSelect): User {
+  return {
+    id: row.id, organizationId: row.organizationId,
+    name: row.name, email: row.email,
+    role: row.role as User["role"],
+  };
+}
+
+function mapClient(row: typeof t.clients.$inferSelect): Client {
+  return {
+    id: row.id, organizationId: row.organizationId,
+    parentClientId: row.parentClientId ?? undefined,
+    name: row.name, contactName: row.contactName,
+    contactEmail: row.contactEmail, contactPhone: row.contactPhone,
+    notes: row.notes ?? undefined,
+  };
+}
+
+function mapJobsite(row: typeof t.jobsites.$inferSelect): Jobsite {
+  return {
+    id: row.id, organizationId: row.organizationId, clientId: row.clientId,
+    name: row.name, address: row.address, city: row.city,
+    state: row.state ?? undefined, bin: row.bin ?? undefined,
+    dobJobNumber: row.dobJobNumber ?? undefined,
+    projectType: row.projectType, buildingType: row.buildingType ?? undefined,
+    stories: row.stories ?? undefined,
+    hasScaffold: row.hasScaffold, hasHoist: row.hasHoist,
+    hasCrane: row.hasCrane, hasExcavation: row.hasExcavation,
+    monitorPublicRecords: row.monitorPublicRecords,
+  };
+}
+
+function mapCodeRef(row: typeof t.codeReferences.$inferSelect): CodeReference {
+  return {
+    id: row.id, codeType: row.codeType as CodeReference["codeType"],
+    chapter: row.chapter ?? undefined, sectionNumber: row.sectionNumber,
+    title: row.title, plainSummary: row.plainSummary,
+    tags: row.tags as string[], officialUrl: row.officialUrl,
+  };
+}
+
+function mapTemplate(row: typeof t.inspectionTemplates.$inferSelect): InspectionTemplate {
+  return {
+    id: row.id, organizationId: row.organizationId,
+    name: row.name, description: row.description, category: row.category,
+  };
+}
+
+function mapInspection(row: typeof t.inspections.$inferSelect): Inspection {
+  return {
+    id: row.id, organizationId: row.organizationId, jobsiteId: row.jobsiteId,
+    templateId: row.templateId, date: row.date, inspectorUserId: row.inspectorUserId,
+    status: row.status as Inspection["status"],
+    scopeOfWork: row.scopeOfWork ?? undefined,
+    ccList: (row.ccList as string[] | null) ?? undefined,
+    recipientName: row.recipientName ?? undefined,
+    recipientTitle: row.recipientTitle ?? undefined,
+    recipientCompany: row.recipientCompany ?? undefined,
+    recipientAddress: row.recipientAddress ?? undefined,
+  };
+}
+
+function mapObservation(row: typeof t.observations.$inferSelect): Observation {
+  return {
+    id: row.id, organizationId: row.organizationId,
+    inspectionId: row.inspectionId, jobsiteId: row.jobsiteId,
+    createdAt: row.createdAt, createdByUserId: row.createdByUserId,
+    location: row.location, description: row.description, category: row.category,
+    type: row.type as Observation["type"],
+    severity: row.severity as Observation["severity"],
+    status: row.status as Observation["status"],
+    correctedOnSite: row.correctedOnSite ?? undefined,
+    assignedTo: row.assignedTo ?? undefined, dueDate: row.dueDate ?? undefined,
+    photoUrls: (row.photoUrls as string[]) ?? [],
+    linkedCodeReferenceIds: (row.linkedCodeReferenceIds as string[]) ?? [],
+    recommendedActions: (row.recommendedActions as string[]) ?? [],
+    source: row.source as Observation["source"],
+    aiFindings: (row.aiFindings as any[] | null) ?? undefined,
+  };
+}
+
+function mapPermit(row: typeof t.jobsitePermits.$inferSelect): JobsitePermit {
+  return {
+    id: row.id, jobsiteId: row.jobsiteId,
+    source: row.source as JobsitePermit["source"],
+    permitNumber: row.permitNumber,
+    jobFilingNumber: row.jobFilingNumber ?? undefined,
+    workType: row.workType, permitType: row.permitType ?? undefined,
+    status: row.status as JobsitePermit["status"],
+    issueDate: row.issueDate ?? undefined, expirationDate: row.expirationDate ?? undefined,
+    description: row.description ?? undefined, rawLocation: row.rawLocation ?? undefined,
+    externalUrl: row.externalUrl ?? undefined,
+    createdAt: row.createdAt, updatedAt: row.updatedAt,
+  };
+}
+
+function mapExternalEvent(row: typeof t.jobsiteExternalEvents.$inferSelect): JobsiteExternalEvent {
+  return {
+    id: row.id, jobsiteId: row.jobsiteId,
+    source: row.source as JobsiteExternalEvent["source"],
+    eventType: row.eventType as JobsiteExternalEvent["eventType"],
+    externalId: row.externalId, status: row.status,
+    category: row.category ?? undefined, description: row.description ?? undefined,
+    issuedDate: row.issuedDate ?? undefined, lastUpdatedDate: row.lastUpdatedDate ?? undefined,
+    rawLocation: row.rawLocation ?? undefined, externalUrl: row.externalUrl ?? undefined,
+    isNew: row.isNew ?? undefined, createdAt: row.createdAt,
+  };
+}
+
+function mapEmployee(row: typeof t.employeeProfiles.$inferSelect): EmployeeProfile {
+  return {
+    id: row.id, organizationId: row.organizationId, userId: row.userId,
+    title: row.title, phone: row.phone, hireDate: row.hireDate,
+    status: row.status as EmployeeProfile["status"],
+    certifications: (row.certifications as string[]) ?? [],
+    licenseNumbers: (row.licenseNumbers as Record<string, string>) ?? {},
+    emergencyContact: row.emergencyContact ?? undefined,
+    emergencyPhone: row.emergencyPhone ?? undefined,
+    hourlyRate: row.hourlyRate ?? undefined, notes: row.notes ?? undefined,
+  };
+}
+
+function mapScheduleEntry(row: typeof t.scheduleEntries.$inferSelect): ScheduleEntry {
+  return {
+    id: row.id, organizationId: row.organizationId,
+    employeeId: row.employeeId, jobsiteId: row.jobsiteId, date: row.date,
+    shiftStart: row.shiftStart ?? undefined, shiftEnd: row.shiftEnd ?? undefined,
+    status: row.status as ScheduleEntry["status"], notes: row.notes ?? undefined,
+  };
+}
+
+function mapTimesheet(row: typeof t.timesheets.$inferSelect): Timesheet {
+  return {
+    id: row.id, organizationId: row.organizationId,
+    employeeId: row.employeeId, weekStartDate: row.weekStartDate,
+    status: row.status as Timesheet["status"],
+    submittedAt: row.submittedAt ?? undefined, approvedBy: row.approvedBy ?? undefined,
+    approvedAt: row.approvedAt ?? undefined, totalHours: row.totalHours ?? 0,
+    notes: row.notes ?? undefined,
+  };
+}
+
+function mapTimesheetEntry(row: typeof t.timesheetEntries.$inferSelect): TimesheetEntry {
+  return {
+    id: row.id, timesheetId: row.timesheetId, date: row.date,
+    jobsiteId: row.jobsiteId ?? undefined, hours: row.hours,
+    description: row.description ?? undefined,
+  };
+}
+
+function mapSafetyReport(row: typeof t.safetyReports.$inferSelect): SafetyReport {
+  return {
+    id: row.id, organizationId: row.organizationId, clientId: row.clientId,
+    periodType: row.periodType as SafetyReport["periodType"],
+    periodStart: row.periodStart, periodEnd: row.periodEnd,
+    totalManhours: row.totalManhours, totalHeadcount: row.totalHeadcount,
+    projectRiskTier: row.projectRiskTier as SafetyReport["projectRiskTier"],
+    newHirePercent: row.newHirePercent,
+    recordableIncidents: row.recordableIncidents, dartCases: row.dartCases,
+    lostTimeIncidents: row.lostTimeIncidents, emr: row.emr,
+    oshaWillfulCitations: row.oshaWillfulCitations,
+    oshaSeriousCitations: row.oshaSeriousCitations,
+    oshaOtherCitations: row.oshaOtherCitations, openWcClaims: row.openWcClaims,
+    inspectionsCompleted: row.inspectionsCompleted,
+    inspectionsScheduled: row.inspectionsScheduled,
+    correctiveActionsClosed: row.correctiveActionsClosed,
+    correctiveActionsOpened: row.correctiveActionsOpened,
+    avgCorrectiveActionDays: row.avgCorrectiveActionDays,
+    nearMissReports: row.nearMissReports,
+    toolboxTalksCompleted: row.toolboxTalksCompleted,
+    toolboxTalksScheduled: row.toolboxTalksScheduled,
+    certifiedWorkforcePercent: row.certifiedWorkforcePercent,
+    jhaCompliancePercent: row.jhaCompliancePercent,
+    permitCompliancePercent: row.permitCompliancePercent,
+    overallScore: row.overallScore, incidentHistoryScore: row.incidentHistoryScore,
+    trainingComplianceScore: row.trainingComplianceScore,
+    hazardManagementScore: row.hazardManagementScore,
+    permitPreTaskScore: row.permitPreTaskScore,
+    reportingCultureScore: row.reportingCultureScore,
+    letterGrade: row.letterGrade as SafetyReport["letterGrade"],
+    topRiskAreas: row.topRiskAreas, recommendedActions: row.recommendedActions,
+    photos: (row.photos as string[]) ?? [], createdAt: row.createdAt,
+  };
+}
+
+function mapSafetySettings(row: typeof t.safetyReportSettings.$inferSelect): SafetyReportSettings {
+  return {
+    organizationId: row.organizationId,
+    incidentHistoryWeight: row.incidentHistoryWeight,
+    trainingComplianceWeight: row.trainingComplianceWeight,
+    hazardManagementWeight: row.hazardManagementWeight,
+    permitPreTaskWeight: row.permitPreTaskWeight,
+    reportingCultureWeight: row.reportingCultureWeight,
+  };
+}
+
 // ─── IStorage interface ───────────────────────────────────────────────────────
 
 export interface IStorage {
-  getCurrentUser(): User;
-  getOrganization(id: string): Organization | undefined;
-  updateOrganization(id: string, data: UpdateOrganization): Organization | undefined;
-  getUsersByOrg(orgId: string): User[];
-  getUser(id: string): User | undefined;
+  getCurrentUser(): Promise<User>;
+  getOrganization(id: string): Promise<Organization | undefined>;
+  updateOrganization(id: string, data: UpdateOrganization): Promise<Organization | undefined>;
+  getUsersByOrg(orgId: string): Promise<User[]>;
+  getUser(id: string): Promise<User | undefined>;
 
-  getClientsByOrg(orgId: string): Client[];
-  getClient(id: string): Client | undefined;
-  getSubcontractors(parentClientId: string): Client[];
-  createClient(orgId: string, data: InsertClient): Client;
+  getClientsByOrg(orgId: string): Promise<Client[]>;
+  getClient(id: string): Promise<Client | undefined>;
+  getSubcontractors(parentClientId: string): Promise<Client[]>;
+  createClient(orgId: string, data: InsertClient): Promise<Client>;
 
-  getJobsitesByOrg(orgId: string): Jobsite[];
-  getJobsitesByClient(clientId: string): Jobsite[];
-  getJobsite(id: string): Jobsite | undefined;
-  createJobsite(orgId: string, data: InsertJobsite): Jobsite;
-  updateJobsite(id: string, updates: Partial<Jobsite>): Jobsite | undefined;
+  getJobsitesByOrg(orgId: string): Promise<Jobsite[]>;
+  getJobsitesByClient(clientId: string): Promise<Jobsite[]>;
+  getJobsite(id: string): Promise<Jobsite | undefined>;
+  createJobsite(orgId: string, data: InsertJobsite): Promise<Jobsite>;
+  updateJobsite(id: string, updates: Partial<Jobsite>): Promise<Jobsite | undefined>;
 
-  getCodeReferences(): CodeReference[];
-  getCodeReference(id: string): CodeReference | undefined;
+  getCodeReferences(): Promise<CodeReference[]>;
+  getCodeReference(id: string): Promise<CodeReference | undefined>;
 
-  getTemplatesByOrg(orgId: string): InspectionTemplate[];
-  getTemplate(id: string): InspectionTemplate | undefined;
+  getTemplatesByOrg(orgId: string): Promise<InspectionTemplate[]>;
+  getTemplate(id: string): Promise<InspectionTemplate | undefined>;
 
-  getInspectionsByOrg(orgId: string): Inspection[];
-  getInspectionsByJobsite(jobsiteId: string): Inspection[];
-  getInspection(id: string): Inspection | undefined;
-  createInspection(orgId: string, inspectorUserId: string, data: InsertInspection): Inspection;
-  updateInspectionStatus(id: string, status: "Draft" | "Submitted"): Inspection | undefined;
-  updateInspection(id: string, updates: UpdateInspectionReport): Inspection | undefined;
+  getInspectionsByOrg(orgId: string): Promise<Inspection[]>;
+  getInspectionsByJobsite(jobsiteId: string): Promise<Inspection[]>;
+  getInspection(id: string): Promise<Inspection | undefined>;
+  createInspection(orgId: string, inspectorUserId: string, data: InsertInspection): Promise<Inspection>;
+  updateInspectionStatus(id: string, status: "Draft" | "Submitted"): Promise<Inspection | undefined>;
+  updateInspection(id: string, updates: UpdateInspectionReport): Promise<Inspection | undefined>;
 
-  getObservationsByInspection(inspectionId: string): Observation[];
-  getObservationsByOrg(orgId: string): Observation[];
-  getObservation(id: string): Observation | undefined;
-  createObservation(orgId: string, userId: string, data: InsertObservation): Observation;
-  updateObservation(id: string, updates: Partial<Observation>): Observation | undefined;
+  getObservationsByInspection(inspectionId: string): Promise<Observation[]>;
+  getObservationsByOrg(orgId: string): Promise<Observation[]>;
+  getObservation(id: string): Promise<Observation | undefined>;
+  createObservation(orgId: string, userId: string, data: InsertObservation): Promise<Observation>;
+  updateObservation(id: string, updates: Partial<Observation>): Promise<Observation | undefined>;
 
-  getPermitsByJobsite(jobsiteId: string): JobsitePermit[];
-  getExternalEventsByJobsite(jobsiteId: string): JobsiteExternalEvent[];
+  getPermitsByJobsite(jobsiteId: string): Promise<JobsitePermit[]>;
+  getExternalEventsByJobsite(jobsiteId: string): Promise<JobsiteExternalEvent[]>;
 
-  getEmployeeProfilesByOrg(orgId: string): EmployeeProfile[];
-  getEmployeeProfile(id: string): EmployeeProfile | undefined;
-  createEmployeeProfile(orgId: string, data: InsertEmployeeProfile): EmployeeProfile;
-  updateEmployeeProfile(id: string, updates: Partial<EmployeeProfile>): EmployeeProfile | undefined;
+  getEmployeeProfilesByOrg(orgId: string): Promise<EmployeeProfile[]>;
+  getEmployeeProfile(id: string): Promise<EmployeeProfile | undefined>;
+  createEmployeeProfile(orgId: string, data: InsertEmployeeProfile): Promise<EmployeeProfile>;
+  updateEmployeeProfile(id: string, updates: Partial<EmployeeProfile>): Promise<EmployeeProfile | undefined>;
 
-  getScheduleEntry(id: string): ScheduleEntry | undefined;
-  getScheduleEntriesByOrg(orgId: string): ScheduleEntry[];
-  getScheduleEntriesByEmployee(employeeId: string): ScheduleEntry[];
-  getScheduleEntriesByDateRange(orgId: string, startDate: string, endDate: string): ScheduleEntry[];
-  createScheduleEntry(orgId: string, data: InsertScheduleEntry): ScheduleEntry;
-  updateScheduleEntry(id: string, updates: Partial<ScheduleEntry>): ScheduleEntry | undefined;
-  deleteScheduleEntry(id: string): boolean;
+  getScheduleEntry(id: string): Promise<ScheduleEntry | undefined>;
+  getScheduleEntriesByOrg(orgId: string): Promise<ScheduleEntry[]>;
+  getScheduleEntriesByEmployee(employeeId: string): Promise<ScheduleEntry[]>;
+  getScheduleEntriesByDateRange(orgId: string, startDate: string, endDate: string): Promise<ScheduleEntry[]>;
+  createScheduleEntry(orgId: string, data: InsertScheduleEntry): Promise<ScheduleEntry>;
+  updateScheduleEntry(id: string, updates: Partial<ScheduleEntry>): Promise<ScheduleEntry | undefined>;
+  deleteScheduleEntry(id: string): Promise<boolean>;
 
-  getTimesheetsByOrg(orgId: string): Timesheet[];
-  getTimesheetsByEmployee(employeeId: string): Timesheet[];
-  getTimesheet(id: string): Timesheet | undefined;
-  getTimesheetEntry(id: string): TimesheetEntry | undefined;
-  createTimesheet(orgId: string, data: InsertTimesheet): Timesheet;
-  updateTimesheet(id: string, updates: Partial<Timesheet>): Timesheet | undefined;
+  getTimesheetsByOrg(orgId: string): Promise<Timesheet[]>;
+  getTimesheetsByEmployee(employeeId: string): Promise<Timesheet[]>;
+  getTimesheet(id: string): Promise<Timesheet | undefined>;
+  getTimesheetEntry(id: string): Promise<TimesheetEntry | undefined>;
+  createTimesheet(orgId: string, data: InsertTimesheet): Promise<Timesheet>;
+  updateTimesheet(id: string, updates: Partial<Timesheet>): Promise<Timesheet | undefined>;
 
-  getTimesheetEntriesByTimesheet(timesheetId: string): TimesheetEntry[];
-  createTimesheetEntry(data: InsertTimesheetEntry): TimesheetEntry;
-  updateTimesheetEntry(id: string, updates: Partial<TimesheetEntry>): TimesheetEntry | undefined;
-  deleteTimesheetEntry(id: string): boolean;
+  getTimesheetEntriesByTimesheet(timesheetId: string): Promise<TimesheetEntry[]>;
+  createTimesheetEntry(data: InsertTimesheetEntry): Promise<TimesheetEntry>;
+  updateTimesheetEntry(id: string, updates: Partial<TimesheetEntry>): Promise<TimesheetEntry | undefined>;
+  deleteTimesheetEntry(id: string): Promise<boolean>;
 
-  getSafetyReportsByOrg(orgId: string): SafetyReport[];
-  getSafetyReportsByClient(clientId: string): SafetyReport[];
-  getSafetyReport(id: string): SafetyReport | undefined;
-  createSafetyReport(orgId: string, data: InsertSafetyReport): SafetyReport;
+  getSafetyReportsByOrg(orgId: string): Promise<SafetyReport[]>;
+  getSafetyReportsByClient(clientId: string): Promise<SafetyReport[]>;
+  getSafetyReport(id: string): Promise<SafetyReport | undefined>;
+  createSafetyReport(orgId: string, data: InsertSafetyReport): Promise<SafetyReport>;
 
-  getSafetySettings(orgId: string): SafetyReportSettings;
-  updateSafetySettings(orgId: string, data: UpdateSafetySettings): SafetyReportSettings;
+  getSafetySettings(orgId: string): Promise<SafetyReportSettings>;
+  updateSafetySettings(orgId: string, data: UpdateSafetySettings): Promise<SafetyReportSettings>;
 }
 
-// ─── MemStorage implementation ────────────────────────────────────────────────
+// ─── DatabaseStorage implementation ──────────────────────────────────────────
 
-export class MemStorage implements IStorage {
-  private organizations: Map<string, Organization>;
-  private users: Map<string, User>;
-  private clients: Map<string, Client>;
-  private jobsites: Map<string, Jobsite>;
-  private codeReferences: Map<string, CodeReference>;
-  private templates: Map<string, InspectionTemplate>;
-  private inspections: Map<string, Inspection>;
-  private observations: Map<string, Observation>;
-  private permits: Map<string, JobsitePermit>;
-  private externalEvents: Map<string, JobsiteExternalEvent>;
-  private employeeProfiles: Map<string, EmployeeProfile>;
-  private scheduleEntries: Map<string, ScheduleEntry>;
-  private timesheets: Map<string, Timesheet>;
-  private timesheetEntries: Map<string, TimesheetEntry>;
-  private safetyReports: Map<string, SafetyReport>;
-  private safetySettings: Map<string, SafetyReportSettings>;
+export class DatabaseStorage implements IStorage {
 
-  constructor() {
-    this.organizations = new Map(mockOrganizations.map(o => [o.id, o]));
-    this.users = new Map(mockUsers.map(u => [u.id, u]));
-    this.clients = new Map(mockClients.map(c => [c.id, c]));
-    this.jobsites = new Map(mockJobsites.map(j => [j.id, j]));
-    this.codeReferences = new Map(mockCodeReferences.map(cr => [cr.id, cr]));
-    this.templates = new Map(mockInspectionTemplates.map(t => [t.id, t]));
-    this.inspections = new Map(mockInspections.map(i => [i.id, i]));
-    this.observations = new Map(mockObservations.map(o => [o.id, o]));
-    this.permits = new Map(mockPermits.map(p => [p.id, p]));
-    this.externalEvents = new Map(mockExternalEvents.map(e => [e.id, e]));
-    this.employeeProfiles = new Map(mockEmployeeProfiles.map(ep => [ep.id, ep]));
-    this.scheduleEntries = new Map(mockScheduleEntries.map(se => [se.id, se]));
-    this.timesheets = new Map(mockTimesheets.map(ts => [ts.id, ts]));
-    this.timesheetEntries = new Map(mockTimesheetEntries.map(te => [te.id, te]));
-    this.safetyReports = new Map(mockSafetyReports.map(r => [r.id, r]));
-    this.safetySettings = new Map(mockSafetyReportSettings.map(s => [s.organizationId, s]));
+  async getCurrentUser(): Promise<User> {
+    const rows = await db.select().from(t.users).where(eq(t.users.id, "user-1"));
+    if (!rows[0]) throw new Error("Default user not found — did you run the seed?");
+    return mapUser(rows[0]);
   }
 
-  getCurrentUser(): User { return mockCurrentUser; }
-  getOrganization(id: string): Organization | undefined { return this.organizations.get(id); }
-  updateOrganization(id: string, data: UpdateOrganization): Organization | undefined {
-    const org = this.organizations.get(id);
-    if (!org) return undefined;
-    if (data.logoUrl !== undefined) org.logoUrl = data.logoUrl ?? undefined;
-    return org;
-  }
-  getUsersByOrg(orgId: string): User[] { return Array.from(this.users.values()).filter(u => u.organizationId === orgId); }
-  getUser(id: string): User | undefined { return this.users.get(id); }
-
-  getClientsByOrg(orgId: string): Client[] { return Array.from(this.clients.values()).filter(c => c.organizationId === orgId); }
-  getClient(id: string): Client | undefined { return this.clients.get(id); }
-  getSubcontractors(parentClientId: string): Client[] { return Array.from(this.clients.values()).filter(c => c.parentClientId === parentClientId); }
-
-  createClient(orgId: string, data: InsertClient): Client {
-    const client: Client = { id: `client-${randomUUID().slice(0, 8)}`, organizationId: orgId, ...data };
-    this.clients.set(client.id, client);
-    return client;
+  async getOrganization(id: string): Promise<Organization | undefined> {
+    const rows = await db.select().from(t.organizations).where(eq(t.organizations.id, id));
+    return rows[0] ? mapOrg(rows[0]) : undefined;
   }
 
-  getJobsitesByOrg(orgId: string): Jobsite[] { return Array.from(this.jobsites.values()).filter(j => j.organizationId === orgId); }
-  getJobsitesByClient(clientId: string): Jobsite[] { return Array.from(this.jobsites.values()).filter(j => j.clientId === clientId); }
-  getJobsite(id: string): Jobsite | undefined { return this.jobsites.get(id); }
-
-  createJobsite(orgId: string, data: InsertJobsite): Jobsite {
-    const jobsite: Jobsite = { id: `job-${randomUUID().slice(0, 8)}`, organizationId: orgId, ...data };
-    this.jobsites.set(jobsite.id, jobsite);
-    return jobsite;
+  async updateOrganization(id: string, data: UpdateOrganization): Promise<Organization | undefined> {
+    const existing = await this.getOrganization(id);
+    if (!existing) return undefined;
+    const logoUrl = data.logoUrl !== undefined ? (data.logoUrl ?? null) : existing.logoUrl ?? null;
+    const rows = await db.update(t.organizations)
+      .set({ logoUrl })
+      .where(eq(t.organizations.id, id))
+      .returning();
+    return rows[0] ? mapOrg(rows[0]) : undefined;
   }
 
-  updateJobsite(id: string, updates: Partial<Jobsite>): Jobsite | undefined {
-    const jobsite = this.jobsites.get(id);
-    if (!jobsite) return undefined;
-    Object.assign(jobsite, updates);
-    return jobsite;
+  async getUsersByOrg(orgId: string): Promise<User[]> {
+    const rows = await db.select().from(t.users).where(eq(t.users.organizationId, orgId));
+    return rows.map(mapUser);
   }
 
-  getCodeReferences(): CodeReference[] { return Array.from(this.codeReferences.values()); }
-  getCodeReference(id: string): CodeReference | undefined { return this.codeReferences.get(id); }
-
-  getTemplatesByOrg(orgId: string): InspectionTemplate[] { return Array.from(this.templates.values()).filter(t => t.organizationId === orgId); }
-  getTemplate(id: string): InspectionTemplate | undefined { return this.templates.get(id); }
-
-  getInspectionsByOrg(orgId: string): Inspection[] { return Array.from(this.inspections.values()).filter(i => i.organizationId === orgId); }
-  getInspectionsByJobsite(jobsiteId: string): Inspection[] { return Array.from(this.inspections.values()).filter(i => i.jobsiteId === jobsiteId); }
-  getInspection(id: string): Inspection | undefined { return this.inspections.get(id); }
-
-  createInspection(orgId: string, inspectorUserId: string, data: InsertInspection): Inspection {
-    const inspection: Inspection = { id: `insp-${randomUUID().slice(0, 8)}`, organizationId: orgId, inspectorUserId, status: "Draft", ...data };
-    this.inspections.set(inspection.id, inspection);
-    return inspection;
+  async getUser(id: string): Promise<User | undefined> {
+    const rows = await db.select().from(t.users).where(eq(t.users.id, id));
+    return rows[0] ? mapUser(rows[0]) : undefined;
   }
 
-  updateInspectionStatus(id: string, status: "Draft" | "Submitted"): Inspection | undefined {
-    const insp = this.inspections.get(id);
-    if (!insp) return undefined;
-    insp.status = status;
-    return insp;
+  async getClientsByOrg(orgId: string): Promise<Client[]> {
+    const rows = await db.select().from(t.clients).where(eq(t.clients.organizationId, orgId));
+    return rows.map(mapClient);
   }
 
-  updateInspection(id: string, updates: UpdateInspectionReport): Inspection | undefined {
-    const insp = this.inspections.get(id);
-    if (!insp) return undefined;
-    if (updates.scopeOfWork !== undefined) insp.scopeOfWork = updates.scopeOfWork;
-    if (updates.ccList !== undefined) insp.ccList = updates.ccList;
-    if (updates.recipientName !== undefined) insp.recipientName = updates.recipientName;
-    if (updates.recipientTitle !== undefined) insp.recipientTitle = updates.recipientTitle;
-    if (updates.recipientCompany !== undefined) insp.recipientCompany = updates.recipientCompany;
-    if (updates.recipientAddress !== undefined) insp.recipientAddress = updates.recipientAddress;
-    return insp;
+  async getClient(id: string): Promise<Client | undefined> {
+    const rows = await db.select().from(t.clients).where(eq(t.clients.id, id));
+    return rows[0] ? mapClient(rows[0]) : undefined;
   }
 
-  getObservationsByInspection(inspectionId: string): Observation[] { return Array.from(this.observations.values()).filter(o => o.inspectionId === inspectionId); }
-  getObservationsByOrg(orgId: string): Observation[] { return Array.from(this.observations.values()).filter(o => o.organizationId === orgId); }
-  getObservation(id: string): Observation | undefined { return this.observations.get(id); }
-
-  createObservation(orgId: string, userId: string, data: InsertObservation): Observation {
-    const observation: Observation = { id: `obs-${randomUUID().slice(0, 8)}`, organizationId: orgId, createdByUserId: userId, createdAt: new Date().toISOString(), ...data };
-    this.observations.set(observation.id, observation);
-    return observation;
+  async getSubcontractors(parentClientId: string): Promise<Client[]> {
+    const rows = await db.select().from(t.clients).where(eq(t.clients.parentClientId, parentClientId));
+    return rows.map(mapClient);
   }
 
-  updateObservation(id: string, updates: Partial<Observation>): Observation | undefined {
-    const obs = this.observations.get(id);
-    if (!obs) return undefined;
-    Object.assign(obs, updates);
-    return obs;
+  async createClient(orgId: string, data: InsertClient): Promise<Client> {
+    const id = `client-${randomUUID().slice(0, 8)}`;
+    const rows = await db.insert(t.clients).values({
+      id, organizationId: orgId, ...data,
+      parentClientId: data.parentClientId ?? null,
+      notes: data.notes ?? null,
+    }).returning();
+    return mapClient(rows[0]);
   }
 
-  getPermitsByJobsite(jobsiteId: string): JobsitePermit[] { return Array.from(this.permits.values()).filter(p => p.jobsiteId === jobsiteId); }
-  getExternalEventsByJobsite(jobsiteId: string): JobsiteExternalEvent[] { return Array.from(this.externalEvents.values()).filter(e => e.jobsiteId === jobsiteId); }
-
-  getEmployeeProfilesByOrg(orgId: string): EmployeeProfile[] { return Array.from(this.employeeProfiles.values()).filter(ep => ep.organizationId === orgId); }
-  getEmployeeProfile(id: string): EmployeeProfile | undefined { return this.employeeProfiles.get(id); }
-
-  createEmployeeProfile(orgId: string, data: InsertEmployeeProfile): EmployeeProfile {
-    const profile: EmployeeProfile = { id: `emp-${randomUUID().slice(0, 8)}`, organizationId: orgId, ...data };
-    this.employeeProfiles.set(profile.id, profile);
-    return profile;
+  async getJobsitesByOrg(orgId: string): Promise<Jobsite[]> {
+    const rows = await db.select().from(t.jobsites).where(eq(t.jobsites.organizationId, orgId));
+    return rows.map(mapJobsite);
   }
 
-  updateEmployeeProfile(id: string, updates: Partial<EmployeeProfile>): EmployeeProfile | undefined {
-    const profile = this.employeeProfiles.get(id);
-    if (!profile) return undefined;
-    Object.assign(profile, updates);
-    return profile;
+  async getJobsitesByClient(clientId: string): Promise<Jobsite[]> {
+    const rows = await db.select().from(t.jobsites).where(eq(t.jobsites.clientId, clientId));
+    return rows.map(mapJobsite);
   }
 
-  getScheduleEntry(id: string): ScheduleEntry | undefined { return this.scheduleEntries.get(id); }
-  getScheduleEntriesByOrg(orgId: string): ScheduleEntry[] { return Array.from(this.scheduleEntries.values()).filter(se => se.organizationId === orgId); }
-  getScheduleEntriesByEmployee(employeeId: string): ScheduleEntry[] { return Array.from(this.scheduleEntries.values()).filter(se => se.employeeId === employeeId); }
-  getScheduleEntriesByDateRange(orgId: string, startDate: string, endDate: string): ScheduleEntry[] {
-    return Array.from(this.scheduleEntries.values()).filter(se => se.organizationId === orgId && se.date >= startDate && se.date <= endDate);
+  async getJobsite(id: string): Promise<Jobsite | undefined> {
+    const rows = await db.select().from(t.jobsites).where(eq(t.jobsites.id, id));
+    return rows[0] ? mapJobsite(rows[0]) : undefined;
   }
 
-  createScheduleEntry(orgId: string, data: InsertScheduleEntry): ScheduleEntry {
-    const entry: ScheduleEntry = { id: `sched-${randomUUID().slice(0, 8)}`, organizationId: orgId, ...data };
-    this.scheduleEntries.set(entry.id, entry);
+  async createJobsite(orgId: string, data: InsertJobsite): Promise<Jobsite> {
+    const id = `job-${randomUUID().slice(0, 8)}`;
+    const rows = await db.insert(t.jobsites).values({
+      id, organizationId: orgId, ...data,
+      state: data.state ?? null, bin: data.bin ?? null,
+      dobJobNumber: data.dobJobNumber ?? null, buildingType: data.buildingType ?? null,
+      stories: data.stories ?? null,
+    }).returning();
+    return mapJobsite(rows[0]);
+  }
+
+  async updateJobsite(id: string, updates: Partial<Jobsite>): Promise<Jobsite | undefined> {
+    const rows = await db.update(t.jobsites).set(updates as any).where(eq(t.jobsites.id, id)).returning();
+    return rows[0] ? mapJobsite(rows[0]) : undefined;
+  }
+
+  async getCodeReferences(): Promise<CodeReference[]> {
+    const rows = await db.select().from(t.codeReferences);
+    return rows.map(mapCodeRef);
+  }
+
+  async getCodeReference(id: string): Promise<CodeReference | undefined> {
+    const rows = await db.select().from(t.codeReferences).where(eq(t.codeReferences.id, id));
+    return rows[0] ? mapCodeRef(rows[0]) : undefined;
+  }
+
+  async getTemplatesByOrg(orgId: string): Promise<InspectionTemplate[]> {
+    const rows = await db.select().from(t.inspectionTemplates).where(eq(t.inspectionTemplates.organizationId, orgId));
+    return rows.map(mapTemplate);
+  }
+
+  async getTemplate(id: string): Promise<InspectionTemplate | undefined> {
+    const rows = await db.select().from(t.inspectionTemplates).where(eq(t.inspectionTemplates.id, id));
+    return rows[0] ? mapTemplate(rows[0]) : undefined;
+  }
+
+  async getInspectionsByOrg(orgId: string): Promise<Inspection[]> {
+    const rows = await db.select().from(t.inspections).where(eq(t.inspections.organizationId, orgId));
+    return rows.map(mapInspection);
+  }
+
+  async getInspectionsByJobsite(jobsiteId: string): Promise<Inspection[]> {
+    const rows = await db.select().from(t.inspections).where(eq(t.inspections.jobsiteId, jobsiteId));
+    return rows.map(mapInspection);
+  }
+
+  async getInspection(id: string): Promise<Inspection | undefined> {
+    const rows = await db.select().from(t.inspections).where(eq(t.inspections.id, id));
+    return rows[0] ? mapInspection(rows[0]) : undefined;
+  }
+
+  async createInspection(orgId: string, inspectorUserId: string, data: InsertInspection): Promise<Inspection> {
+    const id = `insp-${randomUUID().slice(0, 8)}`;
+    const rows = await db.insert(t.inspections).values({
+      id, organizationId: orgId, inspectorUserId, status: "Draft", ...data,
+    }).returning();
+    return mapInspection(rows[0]);
+  }
+
+  async updateInspectionStatus(id: string, status: "Draft" | "Submitted"): Promise<Inspection | undefined> {
+    const rows = await db.update(t.inspections).set({ status }).where(eq(t.inspections.id, id)).returning();
+    return rows[0] ? mapInspection(rows[0]) : undefined;
+  }
+
+  async updateInspection(id: string, updates: UpdateInspectionReport): Promise<Inspection | undefined> {
+    const set: Record<string, any> = {};
+    if (updates.scopeOfWork !== undefined) set.scopeOfWork = updates.scopeOfWork;
+    if (updates.ccList !== undefined) set.ccList = updates.ccList;
+    if (updates.recipientName !== undefined) set.recipientName = updates.recipientName;
+    if (updates.recipientTitle !== undefined) set.recipientTitle = updates.recipientTitle;
+    if (updates.recipientCompany !== undefined) set.recipientCompany = updates.recipientCompany;
+    if (updates.recipientAddress !== undefined) set.recipientAddress = updates.recipientAddress;
+    const rows = await db.update(t.inspections).set(set).where(eq(t.inspections.id, id)).returning();
+    return rows[0] ? mapInspection(rows[0]) : undefined;
+  }
+
+  async getObservationsByInspection(inspectionId: string): Promise<Observation[]> {
+    const rows = await db.select().from(t.observations).where(eq(t.observations.inspectionId, inspectionId));
+    return rows.map(mapObservation);
+  }
+
+  async getObservationsByOrg(orgId: string): Promise<Observation[]> {
+    const rows = await db.select().from(t.observations).where(eq(t.observations.organizationId, orgId));
+    return rows.map(mapObservation);
+  }
+
+  async getObservation(id: string): Promise<Observation | undefined> {
+    const rows = await db.select().from(t.observations).where(eq(t.observations.id, id));
+    return rows[0] ? mapObservation(rows[0]) : undefined;
+  }
+
+  async createObservation(orgId: string, userId: string, data: InsertObservation): Promise<Observation> {
+    const id = `obs-${randomUUID().slice(0, 8)}`;
+    const rows = await db.insert(t.observations).values({
+      id, organizationId: orgId, createdByUserId: userId,
+      createdAt: new Date().toISOString(), ...data,
+      assignedTo: data.assignedTo ?? null,
+      dueDate: data.dueDate ?? null,
+      aiFindings: (data.aiFindings ?? null) as any,
+      correctedOnSite: data.correctedOnSite ?? false,
+    }).returning();
+    return mapObservation(rows[0]);
+  }
+
+  async updateObservation(id: string, updates: Partial<Observation>): Promise<Observation | undefined> {
+    const rows = await db.update(t.observations).set(updates as any).where(eq(t.observations.id, id)).returning();
+    return rows[0] ? mapObservation(rows[0]) : undefined;
+  }
+
+  async getPermitsByJobsite(jobsiteId: string): Promise<JobsitePermit[]> {
+    const rows = await db.select().from(t.jobsitePermits).where(eq(t.jobsitePermits.jobsiteId, jobsiteId));
+    return rows.map(mapPermit);
+  }
+
+  async getExternalEventsByJobsite(jobsiteId: string): Promise<JobsiteExternalEvent[]> {
+    const rows = await db.select().from(t.jobsiteExternalEvents).where(eq(t.jobsiteExternalEvents.jobsiteId, jobsiteId));
+    return rows.map(mapExternalEvent);
+  }
+
+  async getEmployeeProfilesByOrg(orgId: string): Promise<EmployeeProfile[]> {
+    const rows = await db.select().from(t.employeeProfiles).where(eq(t.employeeProfiles.organizationId, orgId));
+    return rows.map(mapEmployee);
+  }
+
+  async getEmployeeProfile(id: string): Promise<EmployeeProfile | undefined> {
+    const rows = await db.select().from(t.employeeProfiles).where(eq(t.employeeProfiles.id, id));
+    return rows[0] ? mapEmployee(rows[0]) : undefined;
+  }
+
+  async createEmployeeProfile(orgId: string, data: InsertEmployeeProfile): Promise<EmployeeProfile> {
+    const id = `emp-${randomUUID().slice(0, 8)}`;
+    const rows = await db.insert(t.employeeProfiles).values({
+      id, organizationId: orgId, ...data,
+      emergencyContact: data.emergencyContact ?? null,
+      emergencyPhone: data.emergencyPhone ?? null,
+      hourlyRate: data.hourlyRate ?? null,
+      notes: data.notes ?? null,
+    }).returning();
+    return mapEmployee(rows[0]);
+  }
+
+  async updateEmployeeProfile(id: string, updates: Partial<EmployeeProfile>): Promise<EmployeeProfile | undefined> {
+    const rows = await db.update(t.employeeProfiles).set(updates as any).where(eq(t.employeeProfiles.id, id)).returning();
+    return rows[0] ? mapEmployee(rows[0]) : undefined;
+  }
+
+  async getScheduleEntry(id: string): Promise<ScheduleEntry | undefined> {
+    const rows = await db.select().from(t.scheduleEntries).where(eq(t.scheduleEntries.id, id));
+    return rows[0] ? mapScheduleEntry(rows[0]) : undefined;
+  }
+
+  async getScheduleEntriesByOrg(orgId: string): Promise<ScheduleEntry[]> {
+    const rows = await db.select().from(t.scheduleEntries).where(eq(t.scheduleEntries.organizationId, orgId));
+    return rows.map(mapScheduleEntry);
+  }
+
+  async getScheduleEntriesByEmployee(employeeId: string): Promise<ScheduleEntry[]> {
+    const rows = await db.select().from(t.scheduleEntries).where(eq(t.scheduleEntries.employeeId, employeeId));
+    return rows.map(mapScheduleEntry);
+  }
+
+  async getScheduleEntriesByDateRange(orgId: string, startDate: string, endDate: string): Promise<ScheduleEntry[]> {
+    const rows = await db.select().from(t.scheduleEntries).where(
+      and(
+        eq(t.scheduleEntries.organizationId, orgId),
+        gte(t.scheduleEntries.date, startDate),
+        lte(t.scheduleEntries.date, endDate)
+      )
+    );
+    return rows.map(mapScheduleEntry);
+  }
+
+  async createScheduleEntry(orgId: string, data: InsertScheduleEntry): Promise<ScheduleEntry> {
+    const id = `sched-${randomUUID().slice(0, 8)}`;
+    const rows = await db.insert(t.scheduleEntries).values({
+      id, organizationId: orgId, ...data,
+      shiftStart: data.shiftStart ?? null,
+      shiftEnd: data.shiftEnd ?? null,
+      notes: data.notes ?? null,
+    }).returning();
+    return mapScheduleEntry(rows[0]);
+  }
+
+  async updateScheduleEntry(id: string, updates: Partial<ScheduleEntry>): Promise<ScheduleEntry | undefined> {
+    const rows = await db.update(t.scheduleEntries).set(updates as any).where(eq(t.scheduleEntries.id, id)).returning();
+    return rows[0] ? mapScheduleEntry(rows[0]) : undefined;
+  }
+
+  async deleteScheduleEntry(id: string): Promise<boolean> {
+    const rows = await db.delete(t.scheduleEntries).where(eq(t.scheduleEntries.id, id)).returning();
+    return rows.length > 0;
+  }
+
+  async getTimesheetsByOrg(orgId: string): Promise<Timesheet[]> {
+    const rows = await db.select().from(t.timesheets).where(eq(t.timesheets.organizationId, orgId));
+    return rows.map(mapTimesheet);
+  }
+
+  async getTimesheetsByEmployee(employeeId: string): Promise<Timesheet[]> {
+    const rows = await db.select().from(t.timesheets).where(eq(t.timesheets.employeeId, employeeId));
+    return rows.map(mapTimesheet);
+  }
+
+  async getTimesheet(id: string): Promise<Timesheet | undefined> {
+    const rows = await db.select().from(t.timesheets).where(eq(t.timesheets.id, id));
+    return rows[0] ? mapTimesheet(rows[0]) : undefined;
+  }
+
+  async getTimesheetEntry(id: string): Promise<TimesheetEntry | undefined> {
+    const rows = await db.select().from(t.timesheetEntries).where(eq(t.timesheetEntries.id, id));
+    return rows[0] ? mapTimesheetEntry(rows[0]) : undefined;
+  }
+
+  async createTimesheet(orgId: string, data: InsertTimesheet): Promise<Timesheet> {
+    const id = `ts-${randomUUID().slice(0, 8)}`;
+    const rows = await db.insert(t.timesheets).values({
+      id, organizationId: orgId, status: "Draft", totalHours: 0, ...data,
+      notes: data.notes ?? null,
+    }).returning();
+    return mapTimesheet(rows[0]);
+  }
+
+  async updateTimesheet(id: string, updates: Partial<Timesheet>): Promise<Timesheet | undefined> {
+    const rows = await db.update(t.timesheets).set(updates as any).where(eq(t.timesheets.id, id)).returning();
+    return rows[0] ? mapTimesheet(rows[0]) : undefined;
+  }
+
+  async getTimesheetEntriesByTimesheet(timesheetId: string): Promise<TimesheetEntry[]> {
+    const rows = await db.select().from(t.timesheetEntries).where(eq(t.timesheetEntries.timesheetId, timesheetId));
+    return rows.map(mapTimesheetEntry);
+  }
+
+  async createTimesheetEntry(data: InsertTimesheetEntry): Promise<TimesheetEntry> {
+    const id = `tse-${randomUUID().slice(0, 8)}`;
+    const rows = await db.insert(t.timesheetEntries).values({
+      id, ...data, jobsiteId: data.jobsiteId ?? null, description: data.description ?? null,
+    }).returning();
+    const entry = mapTimesheetEntry(rows[0]);
+    await this._recalcTotalHours(data.timesheetId);
     return entry;
   }
 
-  updateScheduleEntry(id: string, updates: Partial<ScheduleEntry>): ScheduleEntry | undefined {
-    const entry = this.scheduleEntries.get(id);
-    if (!entry) return undefined;
-    Object.assign(entry, updates);
+  async updateTimesheetEntry(id: string, updates: Partial<TimesheetEntry>): Promise<TimesheetEntry | undefined> {
+    const rows = await db.update(t.timesheetEntries).set(updates as any).where(eq(t.timesheetEntries.id, id)).returning();
+    if (!rows[0]) return undefined;
+    const entry = mapTimesheetEntry(rows[0]);
+    await this._recalcTotalHours(entry.timesheetId);
     return entry;
   }
 
-  deleteScheduleEntry(id: string): boolean { return this.scheduleEntries.delete(id); }
-
-  getTimesheetsByOrg(orgId: string): Timesheet[] { return Array.from(this.timesheets.values()).filter(ts => ts.organizationId === orgId); }
-  getTimesheetsByEmployee(employeeId: string): Timesheet[] { return Array.from(this.timesheets.values()).filter(ts => ts.employeeId === employeeId); }
-  getTimesheet(id: string): Timesheet | undefined { return this.timesheets.get(id); }
-
-  createTimesheet(orgId: string, data: InsertTimesheet): Timesheet {
-    const timesheet: Timesheet = { id: `ts-${randomUUID().slice(0, 8)}`, organizationId: orgId, status: "Draft", totalHours: 0, ...data };
-    this.timesheets.set(timesheet.id, timesheet);
-    return timesheet;
-  }
-
-  updateTimesheet(id: string, updates: Partial<Timesheet>): Timesheet | undefined {
-    const ts = this.timesheets.get(id);
-    if (!ts) return undefined;
-    Object.assign(ts, updates);
-    return ts;
-  }
-
-  getTimesheetEntry(id: string): TimesheetEntry | undefined { return this.timesheetEntries.get(id); }
-
-  getTimesheetEntriesByTimesheet(timesheetId: string): TimesheetEntry[] {
-    return Array.from(this.timesheetEntries.values()).filter(te => te.timesheetId === timesheetId);
-  }
-
-  createTimesheetEntry(data: InsertTimesheetEntry): TimesheetEntry {
-    const entry: TimesheetEntry = { id: `tse-${randomUUID().slice(0, 8)}`, ...data };
-    this.timesheetEntries.set(entry.id, entry);
-    const ts = this.timesheets.get(data.timesheetId);
-    if (ts) {
-      const allEntries = this.getTimesheetEntriesByTimesheet(data.timesheetId);
-      ts.totalHours = allEntries.reduce((sum, e) => sum + e.hours, 0);
-    }
-    return entry;
-  }
-
-  updateTimesheetEntry(id: string, updates: Partial<TimesheetEntry>): TimesheetEntry | undefined {
-    const entry = this.timesheetEntries.get(id);
-    if (!entry) return undefined;
-    Object.assign(entry, updates);
-    const ts = this.timesheets.get(entry.timesheetId);
-    if (ts) {
-      const allEntries = this.getTimesheetEntriesByTimesheet(entry.timesheetId);
-      ts.totalHours = allEntries.reduce((sum, e) => sum + e.hours, 0);
-    }
-    return entry;
-  }
-
-  deleteTimesheetEntry(id: string): boolean {
-    const entry = this.timesheetEntries.get(id);
-    if (!entry) return false;
-    this.timesheetEntries.delete(id);
-    const ts = this.timesheets.get(entry.timesheetId);
-    if (ts) {
-      const allEntries = this.getTimesheetEntriesByTimesheet(entry.timesheetId);
-      ts.totalHours = allEntries.reduce((sum, e) => sum + e.hours, 0);
-    }
+  async deleteTimesheetEntry(id: string): Promise<boolean> {
+    const existing = await this.getTimesheetEntry(id);
+    if (!existing) return false;
+    await db.delete(t.timesheetEntries).where(eq(t.timesheetEntries.id, id));
+    await this._recalcTotalHours(existing.timesheetId);
     return true;
   }
 
-  // ─── Safety Reports ─────────────────────────────────────────────────────────
-
-  getSafetyReportsByOrg(orgId: string): SafetyReport[] {
-    return Array.from(this.safetyReports.values()).filter(r => r.organizationId === orgId);
+  private async _recalcTotalHours(timesheetId: string) {
+    const entries = await this.getTimesheetEntriesByTimesheet(timesheetId);
+    const totalHours = entries.reduce((sum, e) => sum + e.hours, 0);
+    await db.update(t.timesheets).set({ totalHours }).where(eq(t.timesheets.id, timesheetId));
   }
 
-  getSafetyReportsByClient(clientId: string): SafetyReport[] {
-    return Array.from(this.safetyReports.values())
-      .filter(r => r.clientId === clientId)
-      .sort((a, b) => b.periodStart.localeCompare(a.periodStart));
+  async getSafetyReportsByOrg(orgId: string): Promise<SafetyReport[]> {
+    const rows = await db.select().from(t.safetyReports).where(eq(t.safetyReports.organizationId, orgId));
+    return rows.map(mapSafetyReport);
   }
 
-  getSafetyReport(id: string): SafetyReport | undefined {
-    return this.safetyReports.get(id);
+  async getSafetyReportsByClient(clientId: string): Promise<SafetyReport[]> {
+    const rows = await db.select().from(t.safetyReports).where(eq(t.safetyReports.clientId, clientId));
+    return rows.map(mapSafetyReport).sort((a, b) => b.periodStart.localeCompare(a.periodStart));
   }
 
-  createSafetyReport(orgId: string, data: InsertSafetyReport): SafetyReport {
-    const settings = this.getSafetySettings(orgId);
+  async getSafetyReport(id: string): Promise<SafetyReport | undefined> {
+    const rows = await db.select().from(t.safetyReports).where(eq(t.safetyReports.id, id));
+    return rows[0] ? mapSafetyReport(rows[0]) : undefined;
+  }
+
+  async createSafetyReport(orgId: string, data: InsertSafetyReport): Promise<SafetyReport> {
+    const settings = await this.getSafetySettings(orgId);
     const scores = calculateSafetyScores(data, settings);
-    const report: SafetyReport = {
-      id: `sr-${randomUUID().slice(0, 8)}`,
-      organizationId: orgId,
-      createdAt: new Date().toISOString(),
-      ...data,
-      ...scores,
-    };
-    this.safetyReports.set(report.id, report);
-    return report;
+    const id = `sr-${randomUUID().slice(0, 8)}`;
+    const rows = await db.insert(t.safetyReports).values({
+      id, organizationId: orgId, createdAt: new Date().toISOString(),
+      ...data, ...scores,
+    }).returning();
+    return mapSafetyReport(rows[0]);
   }
 
-  getSafetySettings(orgId: string): SafetyReportSettings {
-    return this.safetySettings.get(orgId) ?? {
+  async getSafetySettings(orgId: string): Promise<SafetyReportSettings> {
+    const rows = await db.select().from(t.safetyReportSettings).where(eq(t.safetyReportSettings.organizationId, orgId));
+    if (rows[0]) return mapSafetySettings(rows[0]);
+    return {
       organizationId: orgId,
       incidentHistoryWeight: 35,
       trainingComplianceWeight: 20,
@@ -454,11 +755,16 @@ export class MemStorage implements IStorage {
     };
   }
 
-  updateSafetySettings(orgId: string, data: UpdateSafetySettings): SafetyReportSettings {
-    const settings: SafetyReportSettings = { organizationId: orgId, ...data };
-    this.safetySettings.set(orgId, settings);
-    return settings;
+  async updateSafetySettings(orgId: string, data: UpdateSafetySettings): Promise<SafetyReportSettings> {
+    const existing = await db.select().from(t.safetyReportSettings).where(eq(t.safetyReportSettings.organizationId, orgId));
+    if (existing.length > 0) {
+      const rows = await db.update(t.safetyReportSettings).set(data).where(eq(t.safetyReportSettings.organizationId, orgId)).returning();
+      return mapSafetySettings(rows[0]);
+    } else {
+      const rows = await db.insert(t.safetyReportSettings).values({ organizationId: orgId, ...data }).returning();
+      return mapSafetySettings(rows[0]);
+    }
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
