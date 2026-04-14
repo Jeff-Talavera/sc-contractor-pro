@@ -7,6 +7,7 @@ export const organizations = pgTable("organizations", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   logoUrl: text("logo_url"),
+  status: text("status").notNull().default("active"),
 });
 
 export const users = pgTable("users", {
@@ -16,6 +17,8 @@ export const users = pgTable("users", {
   email: text("email").notNull(),
   role: text("role").notNull(),
   passwordHash: text("password_hash"),
+  isSuperAdmin: boolean("is_super_admin").notNull().default(false),
+  userStatus: text("user_status").notNull().default("active"),
 });
 
 export const clients = pgTable("clients", {

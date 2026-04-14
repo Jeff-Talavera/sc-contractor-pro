@@ -1,9 +1,18 @@
+import * as Sentry from "@sentry/node";
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV ?? "development",
+    tracesSampleRate: 0.2,
+  });
+}
 
 const app = express();
 const httpServer = createServer(app);
@@ -118,6 +127,14 @@ app.use((req, res, next) => {
     console.error("Password seed error:", err);
   }
 
+  // Ensure super-admin account exists (idempotent)
+  try {
+    const { seedSuperAdmin } = await import("./seed");
+    await seedSuperAdmin();
+  } catch (err) {
+    console.error("Super-admin seed error:", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
@@ -125,6 +142,10 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     console.error("Internal Server Error:", err);
+
+    if (status >= 500 && process.env.SENTRY_DSN) {
+      Sentry.captureException(err);
+    }
 
     if (res.headersSent) {
       return next(err);

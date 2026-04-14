@@ -1,6 +1,6 @@
 import { db } from "./db";
 import * as t from "@shared/tables";
-import { eq, isNull } from "drizzle-orm";
+import { eq, isNull, and } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import {
   mockOrganizations, mockUsers, mockClients, mockJobsites, mockCodeReferences,
@@ -238,4 +238,38 @@ export async function seedPasswords() {
     await db.update(t.users).set({ passwordHash: hash }).where(eq(t.users.id, user.id));
   }
   console.log("Passwords set.");
+}
+
+const SUPER_ADMIN_ORG_ID = "org-system";
+const SUPER_ADMIN_USER_ID = "user-superadmin";
+const SUPER_ADMIN_EMAIL = "admin@safetyconnect.app";
+const SUPER_ADMIN_DEFAULT_PASSWORD = "SafeSiteAdmin2024!";
+
+export async function seedSuperAdmin() {
+  const existing = await db.select().from(t.users)
+    .where(and(eq(t.users.id, SUPER_ADMIN_USER_ID), eq(t.users.isSuperAdmin, true)))
+    .limit(1);
+  if (existing.length > 0) return;
+
+  console.log("Seeding super-admin account...");
+
+  await db.insert(t.organizations).values({
+    id: SUPER_ADMIN_ORG_ID,
+    name: "SafeSite (System)",
+    status: "active",
+  }).onConflictDoNothing();
+
+  const hash = await bcrypt.hash(SUPER_ADMIN_DEFAULT_PASSWORD, 10);
+  await db.insert(t.users).values({
+    id: SUPER_ADMIN_USER_ID,
+    organizationId: SUPER_ADMIN_ORG_ID,
+    name: "SafeSite Admin",
+    email: SUPER_ADMIN_EMAIL,
+    role: "Owner",
+    passwordHash: hash,
+    isSuperAdmin: true,
+    userStatus: "active",
+  }).onConflictDoNothing();
+
+  console.log(`Super-admin seeded: ${SUPER_ADMIN_EMAIL} / ${SUPER_ADMIN_DEFAULT_PASSWORD}`);
 }

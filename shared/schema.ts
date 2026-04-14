@@ -4,6 +4,7 @@ export interface Organization {
   id: string;
   name: string;
   logoUrl?: string;
+  status: string;
 }
 
 export interface User {
@@ -12,6 +13,8 @@ export interface User {
   name: string;
   email: string;
   role: "Owner" | "Admin" | "Inspector";
+  isSuperAdmin?: boolean;
+  userStatus?: string;
 }
 
 export interface Client {

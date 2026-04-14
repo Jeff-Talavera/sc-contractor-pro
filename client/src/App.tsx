@@ -15,6 +15,7 @@ import WorkforcePage from "@/pages/workforce";
 import SafetyRatingsPage from "@/pages/safety-ratings";
 import SettingsPage from "@/pages/settings";
 import LoginPage from "@/pages/login";
+import AdminPortal from "@/pages/admin";
 import { HardHat, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { User, Organization } from "@shared/schema";
@@ -114,7 +115,7 @@ function TopNav() {
   );
 }
 
-function AuthGuard({ children }: { children: React.ReactNode }) {
+function AuthGuard({ children, requireSuperAdmin = false }: { children: React.ReactNode; requireSuperAdmin?: boolean }) {
   const { data: me, isLoading } = useQuery<{ user: User; organization: Organization } | null>({
     queryKey: ["/api/me"],
     queryFn: getQueryFn({ on401: "returnNull" }),
@@ -135,6 +136,16 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!me) {
     return <Redirect to="/login" />;
+  }
+
+  // Super admins go to /admin; prevent them from seeing the regular app
+  if (me.user.isSuperAdmin && !requireSuperAdmin) {
+    return <Redirect to="/admin" />;
+  }
+
+  // Regular users cannot access /admin
+  if (!me.user.isSuperAdmin && requireSuperAdmin) {
+    return <Redirect to="/" />;
   }
 
   return <>{children}</>;
@@ -176,12 +187,33 @@ function AppShell() {
   );
 }
 
+function AdminWrapper() {
+  const [, navigate] = useLocation();
+
+  async function handleLogout() {
+    try {
+      await apiRequest("POST", "/api/auth/logout");
+    } catch {
+      // Session may have expired — navigate to login regardless
+    }
+    queryClient.clear();
+    navigate("/login");
+  }
+
+  return (
+    <AuthGuard requireSuperAdmin>
+      <AdminPortal onLogout={handleLogout} />
+    </AuthGuard>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Switch>
           <Route path="/login" component={LoginPage} />
+          <Route path="/admin" component={AdminWrapper} />
           <Route>
             <AuthGuard>
               <AppShell />

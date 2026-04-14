@@ -10,6 +10,7 @@ import type {
   UpdateInspectionReport
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import bcrypt from "bcrypt";
 import { db } from "./db";
 import * as t from "@shared/tables";
 import { eq, and, gte, lte } from "drizzle-orm";
@@ -107,7 +108,7 @@ export function calculateSafetyScores(data: InsertSafetyReport, settings: Safety
 // ─── Row mappers ──────────────────────────────────────────────────────────────
 
 function mapOrg(row: typeof t.organizations.$inferSelect): Organization {
-  return { id: row.id, name: row.name, logoUrl: row.logoUrl ?? undefined };
+  return { id: row.id, name: row.name, logoUrl: row.logoUrl ?? undefined, status: row.status };
 }
 
 function mapUser(row: typeof t.users.$inferSelect): User {
@@ -115,6 +116,8 @@ function mapUser(row: typeof t.users.$inferSelect): User {
     id: row.id, organizationId: row.organizationId,
     name: row.name, email: row.email,
     role: row.role as User["role"],
+    isSuperAdmin: row.isSuperAdmin ?? false,
+    userStatus: row.userStatus ?? "active",
   };
 }
 
@@ -382,6 +385,26 @@ export interface IStorage {
 
   getSafetySettings(orgId: string): Promise<SafetyReportSettings>;
   updateSafetySettings(orgId: string, data: UpdateSafetySettings): Promise<SafetyReportSettings>;
+
+  // ─── Super-admin methods ──────────────────────────────────────────────────
+  adminListOrgs(): Promise<Organization[]>;
+  adminGetOrgWithUsers(orgId: string): Promise<{ org: Organization; users: User[] } | undefined>;
+  adminCreateOrg(name: string): Promise<Organization>;
+  adminUpdateOrgStatus(orgId: string, status: string): Promise<Organization | undefined>;
+  adminCreateUser(orgId: string, name: string, email: string, role: string, password: string): Promise<User>;
+  adminUpdateUser(userId: string, updates: { name?: string; email?: string; role?: string; userStatus?: string }): Promise<User | undefined>;
+  adminResetPassword(userId: string, newPassword: string): Promise<void>;
+  adminGetAnalytics(): Promise<{
+    totalOrgs: number;
+    totalUsers: number;
+    totalInspections: number;
+    totalSafetyReports: number;
+    totalClients: number;
+    totalJobsites: number;
+  }>;
+  adminGetOrgClients(orgId: string): Promise<Client[]>;
+  adminGetOrgJobsites(orgId: string): Promise<Jobsite[]>;
+  adminGetOrgInspections(orgId: string): Promise<Inspection[]>;
 }
 
 // ─── DatabaseStorage implementation ──────────────────────────────────────────
@@ -898,6 +921,92 @@ export class DatabaseStorage implements IStorage {
     }
     const rows = await db.insert(t.safetyReportSettings).values(row).returning();
     return mapSafetySettings(rows[0]);
+  }
+
+  // ─── Super-admin implementations ─────────────────────────────────────────
+
+  async adminListOrgs(): Promise<Organization[]> {
+    const rows = await db.select().from(t.organizations).orderBy(t.organizations.name);
+    return rows.map(mapOrg);
+  }
+
+  async adminGetOrgWithUsers(orgId: string): Promise<{ org: Organization; users: User[] } | undefined> {
+    const orgRows = await db.select().from(t.organizations).where(eq(t.organizations.id, orgId));
+    if (!orgRows[0]) return undefined;
+    const userRows = await db.select().from(t.users).where(eq(t.users.organizationId, orgId));
+    return { org: mapOrg(orgRows[0]), users: userRows.map(mapUser) };
+  }
+
+  async adminCreateOrg(name: string): Promise<Organization> {
+    const id = `org-${randomUUID().slice(0, 8)}`;
+    const rows = await db.insert(t.organizations).values({ id, name, status: "active" }).returning();
+    return mapOrg(rows[0]);
+  }
+
+  async adminUpdateOrgStatus(orgId: string, status: string): Promise<Organization | undefined> {
+    const rows = await db.update(t.organizations).set({ status }).where(eq(t.organizations.id, orgId)).returning();
+    return rows[0] ? mapOrg(rows[0]) : undefined;
+  }
+
+  async adminCreateUser(orgId: string, name: string, email: string, role: string, password: string): Promise<User> {
+    const id = `user-${randomUUID().slice(0, 8)}`;
+    const passwordHash = await bcrypt.hash(password, 10);
+    const rows = await db.insert(t.users).values({
+      id, organizationId: orgId, name, email, role,
+      passwordHash, isSuperAdmin: false, userStatus: "active",
+    }).returning();
+    return mapUser(rows[0]);
+  }
+
+  async adminUpdateUser(userId: string, updates: { name?: string; email?: string; role?: string; userStatus?: string }): Promise<User | undefined> {
+    const rows = await db.update(t.users).set(updates).where(eq(t.users.id, userId)).returning();
+    return rows[0] ? mapUser(rows[0]) : undefined;
+  }
+
+  async adminResetPassword(userId: string, newPassword: string): Promise<void> {
+    const hash = await bcrypt.hash(newPassword, 10);
+    await db.update(t.users).set({ passwordHash: hash }).where(eq(t.users.id, userId));
+  }
+
+  async adminGetAnalytics(): Promise<{
+    totalOrgs: number;
+    totalUsers: number;
+    totalInspections: number;
+    totalSafetyReports: number;
+    totalClients: number;
+    totalJobsites: number;
+  }> {
+    const [orgs, users, inspections, safetyReports, clients, jobsites] = await Promise.all([
+      db.select().from(t.organizations),
+      db.select().from(t.users).where(eq(t.users.isSuperAdmin, false)),
+      db.select().from(t.inspections),
+      db.select().from(t.safetyReports),
+      db.select().from(t.clients),
+      db.select().from(t.jobsites),
+    ]);
+    return {
+      totalOrgs: orgs.filter(o => o.id !== "org-system").length,
+      totalUsers: users.length,
+      totalInspections: inspections.length,
+      totalSafetyReports: safetyReports.length,
+      totalClients: clients.length,
+      totalJobsites: jobsites.length,
+    };
+  }
+
+  async adminGetOrgClients(orgId: string): Promise<Client[]> {
+    const rows = await db.select().from(t.clients).where(eq(t.clients.organizationId, orgId));
+    return rows.map(mapClient);
+  }
+
+  async adminGetOrgJobsites(orgId: string): Promise<Jobsite[]> {
+    const rows = await db.select().from(t.jobsites).where(eq(t.jobsites.organizationId, orgId));
+    return rows.map(mapJobsite);
+  }
+
+  async adminGetOrgInspections(orgId: string): Promise<Inspection[]> {
+    const rows = await db.select().from(t.inspections).where(eq(t.inspections.organizationId, orgId));
+    return rows.map(mapInspection);
   }
 }
 

@@ -8,6 +8,7 @@ Multi-firm construction safety application for safety consulting firms (2-10 ins
 - **Backend**: Express.js with Drizzle ORM, PostgreSQL (Replit built-in via `pg` Pool)
 - **Data**: PostgreSQL with Drizzle ORM; seed data loaded once on first startup from `server/mockData.ts`
 - **Schema**: Drizzle table definitions in `shared/tables.ts`; Zod schemas & TS interfaces in `shared/schema.ts`
+- **Error Tracking**: Sentry (optional; set SENTRY_DSN / VITE_SENTRY_DSN env vars to activate)
 
 ## Key Files
 - `shared/schema.ts` - All TypeScript interfaces and Zod validation schemas
@@ -37,6 +38,35 @@ Multi-firm construction safety application for safety consulting firms (2-10 ins
 - **SafetyReport** (contractor safety data entry per period: lagging + leading indicators, auto-computed scores 0-100 and letter grade A-D, `photos: string[]` base64 attachments up to 10)
 - **SafetyReportSettings** (org-level scoring weight configuration, defaults: incident 35%, training 20%, hazard 20%, permit 15%, culture 10%)
 - **Organization** extended with `logoUrl?: string` (stored as base64 data URI)
+
+## Authentication & Access Control
+- Session-based auth with `express-session` + PostgreSQL session store (7-day cookie)
+- `SESSION_SECRET` env var required in production; warns in dev if missing; exits fatally in production
+- Login: `POST /api/auth/login` — bcrypt password verify, org suspension check, user deactivation check
+- Global auth middleware: `app.use("/api", requireAuth)` after public login/logout routes
+- `SENTRY_DSN` and `VITE_SENTRY_DSN` optional env vars for Sentry error tracking
+
+### User Roles (within a firm)
+- `Owner` — full access
+- `Admin` — full access
+- `Inspector` — limited access
+
+### Super Admin
+- Flag: `users.isSuperAdmin = true` (plus `users.userStatus`)
+- Super-admin login routes to `/admin` (separate portal, never sees regular app)
+- Regular firm users attempting `/admin` are redirected to `/`
+- Seeded super-admin: `admin@safetyconnect.app` / `SafeSiteAdmin2024!`
+
+### Firm Seeded Users (all password: `SafeSite2024!`)
+- `maria@safeguardnyc.com` — Owner, SafeGuard NYC (org-1) ← primary test login
+- `james@safeguardnyc.com`, `priya@safeguardnyc.com` — additional org-1 users
+
+### Admin Portal (`/admin`)
+- **Analytics** — platform-wide counts: firms, users, clients, jobsites, inspections, safety reports
+- **Firms** — list all orgs; create new org + owner account; suspend/activate firms
+- **Firm Detail** — Users tab: add/edit/deactivate users, reset passwords; Support View tab: read-only browse of firm's clients/jobsites/inspections
+- API routes: all under `/api/admin/*` — protected by `requireSuperAdmin` middleware
+- Org suspension blocks all firm users at login and via `requireAuth` middleware
 
 ## Features
 
