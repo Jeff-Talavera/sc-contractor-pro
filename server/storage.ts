@@ -309,7 +309,9 @@ function mapSafetySettings(row: typeof t.safetyReportSettings.$inferSelect): Saf
 // ─── IStorage interface ───────────────────────────────────────────────────────
 
 export interface IStorage {
-  getCurrentUser(): Promise<User>;
+  getCurrentUser(userId: string): Promise<User>;
+  getUserByEmail(email: string): Promise<(User & { passwordHash: string | null }) | undefined>;
+  setPasswordHash(userId: string, hash: string): Promise<void>;
   getOrganization(id: string): Promise<Organization | undefined>;
   updateOrganization(id: string, data: UpdateOrganization): Promise<Organization | undefined>;
   getUsersByOrg(orgId: string): Promise<User[]>;
@@ -386,10 +388,20 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
 
-  async getCurrentUser(): Promise<User> {
-    const rows = await db.select().from(t.users).where(eq(t.users.id, "user-1"));
-    if (!rows[0]) throw new Error("Default user not found — did you run the seed?");
+  async getCurrentUser(userId: string): Promise<User> {
+    const rows = await db.select().from(t.users).where(eq(t.users.id, userId));
+    if (!rows[0]) throw new Error("User not found");
     return mapUser(rows[0]);
+  }
+
+  async getUserByEmail(email: string): Promise<(User & { passwordHash: string | null }) | undefined> {
+    const rows = await db.select().from(t.users).where(eq(t.users.email, email));
+    if (!rows[0]) return undefined;
+    return { ...mapUser(rows[0]), passwordHash: rows[0].passwordHash ?? null };
+  }
+
+  async setPasswordHash(userId: string, hash: string): Promise<void> {
+    await db.update(t.users).set({ passwordHash: hash }).where(eq(t.users.id, userId));
   }
 
   async getOrganization(id: string): Promise<Organization | undefined> {
