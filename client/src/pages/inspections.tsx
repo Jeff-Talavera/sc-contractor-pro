@@ -1381,7 +1381,10 @@ function InspectionDetail({ id }: { id: string }) {
                           value={obs.status}
                           onValueChange={(val) => obsStatusMutation.mutate({ obsId: obs.id, status: val })}
                         >
-                          <SelectTrigger className="w-[140px] shrink-0" data-testid={`select-obs-status-${obs.id}`}>
+                          <SelectTrigger
+                            className={`w-[140px] shrink-0 ${observationStatusColors[obs.status] ?? ""}`}
+                            data-testid={`select-obs-status-${obs.id}`}
+                          >
                             <div className="flex items-center gap-1.5">
                               <StatusIcon className="h-3 w-3" />
                               <SelectValue />

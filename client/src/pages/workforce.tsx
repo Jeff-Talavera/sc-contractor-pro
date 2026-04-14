@@ -28,8 +28,8 @@ import {
 
 const statusColors: Record<string, string> = {
   Active: "bg-green-500/15 text-green-700 dark:text-green-400",
-  Inactive: "bg-muted text-muted-foreground",
-  "On Leave": "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
+  Inactive: "bg-destructive/15 text-destructive",
+  "On Leave": "bg-amber-500/15 text-amber-700 dark:text-amber-400",
 };
 
 const scheduleStatusColors: Record<string, string> = {
