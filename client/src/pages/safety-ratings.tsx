@@ -500,7 +500,7 @@ function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
               ["permitPreTaskWeight", "Permit & Pre-Task"],
               ["reportingCultureWeight", "Reporting Culture"],
             ] as [string, string][]).map(([field, label]) => (
-              <FormField key={field} control={form.control} name={field as any} render={({ f }) => (
+              <FormField key={field} control={form.control} name={field as any} render={() => (
                 <FormItem>
                   <div className="flex items-center justify-between">
                     <FormLabel className="text-sm">{label}</FormLabel>
@@ -572,6 +572,8 @@ function SafetyRatingsDashboard() {
     queryKey: ["/api/safety-reports"],
   });
   const { data: clients } = useQuery<Client[]>({ queryKey: ["/api/clients"] });
+  const { data: meData } = useQuery<{ user: { role: string } }>({ queryKey: ["/api/me"] });
+  const isAdmin = meData?.user?.role === "Owner" || meData?.user?.role === "Admin";
 
   const clientMap = new Map(clients?.map(c => [c.id, c]) ?? []);
 
@@ -594,7 +596,7 @@ function SafetyRatingsDashboard() {
     return !search || client?.name.toLowerCase().includes(search.toLowerCase());
   };
 
-  const allRanked = [...latestByClient.values()]
+  const allRanked = Array.from(latestByClient.values())
     .sort((a, b) => b.overallScore - a.overallScore);
 
   const topLevelRanked = allRanked.filter(r => {
@@ -630,14 +632,16 @@ function SafetyRatingsDashboard() {
               <h1 className="text-2xl font-semibold" data-testid="text-safety-ratings-title">Safety Ratings</h1>
               <p className="text-sm text-muted-foreground mt-1">Contractor safety performance rankings</p>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setShowSettings(true)} data-testid="button-open-settings">
-                <Settings2 className="h-4 w-4 mr-1.5" /> Weights
-              </Button>
-              <Button size="sm" onClick={() => setShowNewReport(true)} data-testid="button-new-report">
-                <Plus className="h-4 w-4 mr-1.5" /> New Report
-              </Button>
-            </div>
+            {isAdmin && (
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setShowSettings(true)} data-testid="button-open-settings">
+                  <Settings2 className="h-4 w-4 mr-1.5" /> Weights
+                </Button>
+                <Button size="sm" onClick={() => setShowNewReport(true)} data-testid="button-new-report">
+                  <Plus className="h-4 w-4 mr-1.5" /> New Report
+                </Button>
+              </div>
+            )}
           </div>
 
           {!reportsLoading && ranked.length > 0 && (
@@ -693,7 +697,7 @@ function SafetyRatingsDashboard() {
             <div className="text-center py-16 text-muted-foreground">
               <Shield className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p className="text-sm font-medium">{search ? "No contractors match your search" : "No safety reports yet"}</p>
-              {!search && (
+              {!search && isAdmin && (
                 <Button className="mt-4" onClick={() => setShowNewReport(true)} data-testid="button-new-report-empty">
                   <Plus className="h-4 w-4 mr-1" /> Add First Report
                 </Button>
@@ -805,7 +809,8 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
   const parentClient = client?.parentClientId
     ? allClients?.find(c => c.id === client.parentClientId)
     : undefined;
-  const { data: meData } = useQuery<{ organization: any }>({ queryKey: ["/api/me"] });
+  const { data: meData } = useQuery<{ user: { role: string }; organization: any }>({ queryKey: ["/api/me"] });
+  const isAdmin = meData?.user?.role === "Owner" || meData?.user?.role === "Admin";
 
   const sorted = [...(reports ?? [])].sort((a, b) => a.periodStart.localeCompare(b.periodStart));
   const latest = sorted.length > 0 ? sorted[sorted.length - 1] : null;
@@ -818,10 +823,10 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
   }));
 
   const handleDownload = async (report: SafetyReport) => {
-    if (!client || !meData?.organization) return;
+    if (!client || !(meData as any)?.organization) return;
     setDownloadingId(report.id);
     try {
-      await exportSafetyReportPDF(report, client, meData.organization, parentClient);
+      await exportSafetyReportPDF(report, client, (meData as any).organization, parentClient);
     } catch (err: any) {
       toast({ title: "Export failed", description: err.message, variant: "destructive" });
     } finally {
@@ -862,9 +867,11 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
                 ) : "Contractor safety performance"}
               </p>
             </div>
-            <Button size="sm" onClick={() => setShowNewReport(true)} data-testid="button-add-report">
-              <Plus className="h-4 w-4 mr-1.5" /> New Report
-            </Button>
+            {isAdmin && (
+              <Button size="sm" onClick={() => setShowNewReport(true)} data-testid="button-add-report">
+                <Plus className="h-4 w-4 mr-1.5" /> New Report
+              </Button>
+            )}
           </div>
 
           {latest && (

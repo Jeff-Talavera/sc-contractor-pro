@@ -373,9 +373,12 @@ export async function registerRoutes(
   });
 
   app.post("/api/safety-reports", (req, res) => {
+    const user = storage.getCurrentUser();
+    if (user.role !== "Owner" && user.role !== "Admin") {
+      return res.status(403).json({ message: "Admin or Owner role required to create safety reports" });
+    }
     const parsed = insertSafetyReportSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
-    const user = storage.getCurrentUser();
     const report = storage.createSafetyReport(user.organizationId, parsed.data);
     res.status(201).json(report);
   });
@@ -386,9 +389,12 @@ export async function registerRoutes(
   });
 
   app.put("/api/safety-settings", (req, res) => {
+    const user = storage.getCurrentUser();
+    if (user.role !== "Owner" && user.role !== "Admin") {
+      return res.status(403).json({ message: "Admin or Owner role required to update scoring weights" });
+    }
     const parsed = updateSafetySettingsSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
-    const user = storage.getCurrentUser();
     const settings = storage.updateSafetySettings(user.organizationId, parsed.data);
     res.json(settings);
   });
