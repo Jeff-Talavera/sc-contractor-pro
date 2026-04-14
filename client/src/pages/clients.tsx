@@ -36,17 +36,18 @@ function ClientsList() {
 
   const form = useForm({
     resolver: zodResolver(insertClientSchema),
-    defaultValues: { name: "", contactName: "", contactEmail: "", contactPhone: "", notes: "" },
+    defaultValues: { name: "", contactName: "", contactEmail: "", contactPhone: "", notes: "", parentClientId: "" },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/clients", data);
+      const payload = { ...data, parentClientId: data.parentClientId || undefined };
+      const res = await apiRequest("POST", "/api/clients", payload);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
-      form.reset();
+      form.reset({ name: "", contactName: "", contactEmail: "", contactPhone: "", notes: "", parentClientId: "" });
       setDialogOpen(false);
       toast({ title: "Client created successfully" });
     },
@@ -55,10 +56,18 @@ function ClientsList() {
     },
   });
 
-  const filtered = clients?.filter(c =>
+  const allClients = clients ?? [];
+  const matchesSearch = (c: Client) =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.contactName.toLowerCase().includes(search.toLowerCase())
-  ) ?? [];
+    c.contactName.toLowerCase().includes(search.toLowerCase());
+
+  const topLevelClients = allClients.filter(c => !c.parentClientId && matchesSearch(c));
+  const subcontractorMap = new Map<string, Client[]>();
+  allClients.filter(c => c.parentClientId).forEach(sub => {
+    const subs = subcontractorMap.get(sub.parentClientId!) ?? [];
+    subs.push(sub);
+    subcontractorMap.set(sub.parentClientId!, subs);
+  });
 
   const getJobsiteCount = (clientId: string) =>
     jobsites?.filter(j => j.clientId === clientId).length ?? 0;
@@ -122,6 +131,30 @@ function ClientsList() {
                         <FormMessage />
                       </FormItem>
                     )} />
+                    {allClients.filter(c => !c.parentClientId).length > 0 && (
+                      <FormField control={form.control} name="parentClientId" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Parent Client (optional — for subcontractors)</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-parent-client">
+                                <SelectValue placeholder="None — standalone client" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="">None — standalone client</SelectItem>
+                              {allClients
+                                .filter(c => !c.parentClientId)
+                                .sort((a, b) => a.name.localeCompare(b.name))
+                                .map(c => (
+                                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    )}
                     <Button type="submit" className="w-full" disabled={createMutation.isPending} data-testid="button-submit-client">
                       {createMutation.isPending ? "Creating..." : "Create Client"}
                     </Button>
@@ -146,35 +179,70 @@ function ClientsList() {
             <div className="space-y-3">
               {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 w-full" />)}
             </div>
-          ) : filtered.length === 0 ? (
+          ) : topLevelClients.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Building2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p className="text-sm">{search ? "No clients match your search" : "No clients yet"}</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {filtered.map(client => (
-                <Link key={client.id} href={`/clients/${client.id}`}>
-                  <Card className="cursor-pointer hover-elevate" data-testid={`card-client-${client.id}`}>
-                    <CardContent className="flex items-center justify-between gap-4 p-4">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium truncate">{client.name}</p>
-                        <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <User className="h-3 w-3" /> {client.contactName}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Mail className="h-3 w-3" /> {client.contactEmail}
-                          </span>
-                        </div>
+              {topLevelClients.map(client => {
+                const subs = subcontractorMap.get(client.id) ?? [];
+                return (
+                  <div key={client.id}>
+                    <Link href={`/clients/${client.id}`}>
+                      <Card className="cursor-pointer hover-elevate" data-testid={`card-client-${client.id}`}>
+                        <CardContent className="flex items-center justify-between gap-4 p-4">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium truncate">{client.name}</p>
+                            <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <User className="h-3 w-3" /> {client.contactName}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Mail className="h-3 w-3" /> {client.contactEmail}
+                              </span>
+                              {subs.length > 0 && (
+                                <span className="flex items-center gap-1">
+                                  <Users className="h-3 w-3" /> {subs.length} subcontractor{subs.length !== 1 ? "s" : ""}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <Badge variant="secondary" className="shrink-0">
+                            {getJobsiteCount(client.id)} site{getJobsiteCount(client.id) !== 1 ? "s" : ""}
+                          </Badge>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                    {subs.length > 0 && (
+                      <div className="ml-6 mt-1 space-y-1 border-l-2 border-muted pl-4">
+                        {subs.map(sub => (
+                          <Link key={sub.id} href={`/clients/${sub.id}`}>
+                            <Card className="cursor-pointer hover-elevate" data-testid={`card-client-${sub.id}`}>
+                              <CardContent className="flex items-center justify-between gap-4 p-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="font-medium text-sm truncate">{sub.name}</p>
+                                    <Badge variant="outline" className="text-xs">Subcontractor</Badge>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                                    <span className="flex items-center gap-1"><User className="h-3 w-3" /> {sub.contactName}</span>
+                                    <span className="flex items-center gap-1"><Mail className="h-3 w-3" /> {sub.contactEmail}</span>
+                                  </div>
+                                </div>
+                                <Badge variant="secondary" className="shrink-0 text-xs">
+                                  {getJobsiteCount(sub.id)} site{getJobsiteCount(sub.id) !== 1 ? "s" : ""}
+                                </Badge>
+                              </CardContent>
+                            </Card>
+                          </Link>
+                        ))}
                       </div>
-                      <Badge variant="secondary" className="shrink-0">
-                        {getJobsiteCount(client.id)} site{getJobsiteCount(client.id) !== 1 ? "s" : ""}
-                      </Badge>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -385,6 +453,10 @@ function ClientDetail({ id }: { id: string }) {
   const { data: client, isLoading } = useQuery<Client>({
     queryKey: ["/api/clients", id],
   });
+  const { data: allClients } = useQuery<Client[]>({ queryKey: ["/api/clients"] });
+  const parentClient = client?.parentClientId
+    ? allClients?.find(c => c.id === client.parentClientId)
+    : undefined;
   const { data: jobsites } = useQuery<Jobsite[]>({
     queryKey: ["/api/clients", id, "jobsites"],
   });
@@ -457,8 +529,17 @@ function ClientDetail({ id }: { id: string }) {
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-semibold" data-testid="text-client-name">{client.name}</h1>
-              <p className="text-sm text-muted-foreground">Client details</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-2xl font-semibold" data-testid="text-client-name">{client.name}</h1>
+                {parentClient && (
+                  <Badge variant="outline" className="text-xs" data-testid="badge-subcontractor-of">Subcontractor</Badge>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground" data-testid="text-client-subtitle">
+                {parentClient ? (
+                  <>Subcontractor of <Link href={`/clients/${parentClient.id}`} className="underline hover:text-foreground">{parentClient.name}</Link></>
+                ) : "Client details"}
+              </p>
             </div>
           </div>
 

@@ -403,7 +403,13 @@ export const updateSafetySettingsSchema = z.object({
   hazardManagementWeight: z.number().min(0).max(100),
   permitPreTaskWeight: z.number().min(0).max(100),
   reportingCultureWeight: z.number().min(0).max(100),
-});
+}).refine(
+  data =>
+    data.incidentHistoryWeight + data.trainingComplianceWeight +
+    data.hazardManagementWeight + data.permitPreTaskWeight +
+    data.reportingCultureWeight === 100,
+  { message: "Scoring weights must sum to exactly 100" }
+);
 
 export type InsertClient = z.infer<typeof insertClientSchema>;
 export type InsertJobsite = z.infer<typeof insertJobsiteSchema>;

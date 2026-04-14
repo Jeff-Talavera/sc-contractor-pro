@@ -589,12 +589,30 @@ function SafetyRatingsDashboard() {
     historyByClient.set(clientId, sorted);
   });
 
-  const ranked = [...latestByClient.values()]
-    .sort((a, b) => b.overallScore - a.overallScore)
-    .filter(r => {
-      const client = clientMap.get(r.clientId);
-      return !search || client?.name.toLowerCase().includes(search.toLowerCase());
-    });
+  const matchesSearch = (clientId: string) => {
+    const client = clientMap.get(clientId);
+    return !search || client?.name.toLowerCase().includes(search.toLowerCase());
+  };
+
+  const allRanked = [...latestByClient.values()]
+    .sort((a, b) => b.overallScore - a.overallScore);
+
+  const topLevelRanked = allRanked.filter(r => {
+    const client = clientMap.get(r.clientId);
+    return !client?.parentClientId && matchesSearch(r.clientId);
+  });
+
+  const subRankedByParent = new Map<string, SafetyReport[]>();
+  allRanked.forEach(r => {
+    const client = clientMap.get(r.clientId);
+    if (client?.parentClientId) {
+      const existing = subRankedByParent.get(client.parentClientId) ?? [];
+      existing.push(r);
+      subRankedByParent.set(client.parentClientId, existing);
+    }
+  });
+
+  const ranked = allRanked.filter(r => matchesSearch(r.clientId));
 
   const avgScore = ranked.length > 0
     ? Math.round(ranked.reduce((s, r) => s + r.overallScore, 0) / ranked.length)
@@ -683,40 +701,81 @@ function SafetyRatingsDashboard() {
             </div>
           ) : (
             <div className="space-y-2">
-              {ranked.map((report, idx) => {
+              {topLevelRanked.map((report, idx) => {
                 const client = clientMap.get(report.clientId);
                 const history = historyByClient.get(report.clientId) ?? [];
+                const subs = subRankedByParent.get(report.clientId) ?? [];
                 if (!client) return null;
                 return (
-                  <Link key={report.clientId} href={`/safety-ratings/${report.clientId}`}>
-                    <Card className="cursor-pointer hover-elevate" data-testid={`card-rating-${report.clientId}`}>
-                      <CardContent className="p-4">
-                        <div className="flex items-start gap-4">
-                          <div className="flex flex-col items-center justify-center w-8 shrink-0 pt-0.5">
-                            <span className="text-xs text-muted-foreground">#{idx + 1}</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="font-medium text-sm truncate">{client.name}</p>
-                              <Badge className={`text-xs ${gradeBadgeClass(report.letterGrade)}`} data-testid={`badge-grade-${report.clientId}`}>
-                                Grade {report.letterGrade}
-                              </Badge>
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                {trendIcon(history)}
-                                <span>{formatPeriod(report.periodStart, report.periodEnd)}</span>
-                              </div>
+                  <div key={report.clientId}>
+                    <Link href={`/safety-ratings/${report.clientId}`}>
+                      <Card className="cursor-pointer hover-elevate" data-testid={`card-rating-${report.clientId}`}>
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-4">
+                            <div className="flex flex-col items-center justify-center w-8 shrink-0 pt-0.5">
+                              <span className="text-xs text-muted-foreground">#{idx + 1}</span>
                             </div>
-                            <CategoryBreakdown report={report} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-medium text-sm truncate">{client.name}</p>
+                                <Badge className={`text-xs ${gradeBadgeClass(report.letterGrade)}`} data-testid={`badge-grade-${report.clientId}`}>
+                                  Grade {report.letterGrade}
+                                </Badge>
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  {trendIcon(history)}
+                                  <span>{formatPeriod(report.periodStart, report.periodEnd)}</span>
+                                </div>
+                              </div>
+                              <CategoryBreakdown report={report} />
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <div className="text-2xl font-bold tabular-nums" data-testid={`score-${report.clientId}`}>{report.overallScore}</div>
+                              <div className="text-xs text-muted-foreground">/ 100</div>
+                              <ChevronRight className="h-4 w-4 text-muted-foreground mt-1" />
+                            </div>
                           </div>
-                          <div className="flex flex-col items-end gap-1 shrink-0">
-                            <div className="text-2xl font-bold tabular-nums" data-testid={`score-${report.clientId}`}>{report.overallScore}</div>
-                            <div className="text-xs text-muted-foreground">/ 100</div>
-                            <ChevronRight className="h-4 w-4 text-muted-foreground mt-1" />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
+                        </CardContent>
+                      </Card>
+                    </Link>
+                    {subs.length > 0 && (
+                      <div className="ml-6 mt-1 space-y-1 border-l-2 border-muted pl-4">
+                        {subs.map(sub => {
+                          const subClient = clientMap.get(sub.clientId);
+                          const subHistory = historyByClient.get(sub.clientId) ?? [];
+                          if (!subClient) return null;
+                          return (
+                            <Link key={sub.clientId} href={`/safety-ratings/${sub.clientId}`}>
+                              <Card className="cursor-pointer hover-elevate" data-testid={`card-rating-${sub.clientId}`}>
+                                <CardContent className="p-3">
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <p className="font-medium text-sm truncate">{subClient.name}</p>
+                                        <Badge variant="outline" className="text-xs">Subcontractor</Badge>
+                                        <Badge className={`text-xs ${gradeBadgeClass(sub.letterGrade)}`} data-testid={`badge-grade-${sub.clientId}`}>
+                                          Grade {sub.letterGrade}
+                                        </Badge>
+                                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                          {trendIcon(subHistory)}
+                                          <span>{formatPeriod(sub.periodStart, sub.periodEnd)}</span>
+                                        </div>
+                                      </div>
+                                      <CategoryBreakdown report={sub} />
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1 shrink-0">
+                                      <div className="text-xl font-bold tabular-nums" data-testid={`score-${sub.clientId}`}>{sub.overallScore}</div>
+                                      <div className="text-xs text-muted-foreground">/ 100</div>
+                                      <ChevronRight className="h-4 w-4 text-muted-foreground mt-0.5" />
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -742,6 +801,10 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
     queryFn: () => fetch(`/api/safety-reports/client/${clientId}`).then(r => r.json()),
   });
   const { data: client } = useQuery<Client>({ queryKey: ["/api/clients", clientId] });
+  const { data: allClients } = useQuery<Client[]>({ queryKey: ["/api/clients"] });
+  const parentClient = client?.parentClientId
+    ? allClients?.find(c => c.id === client.parentClientId)
+    : undefined;
   const { data: meData } = useQuery<{ organization: any }>({ queryKey: ["/api/me"] });
 
   const sorted = [...(reports ?? [])].sort((a, b) => a.periodStart.localeCompare(b.periodStart));
@@ -758,7 +821,7 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
     if (!client || !meData?.organization) return;
     setDownloadingId(report.id);
     try {
-      await exportSafetyReportPDF(report, client, meData.organization);
+      await exportSafetyReportPDF(report, client, meData.organization, parentClient);
     } catch (err: any) {
       toast({ title: "Export failed", description: err.message, variant: "destructive" });
     } finally {
@@ -787,10 +850,17 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
               </Button>
             </Link>
             <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-semibold truncate" data-testid="text-contractor-name">
-                {client?.name ?? "Loading..."}
-              </h1>
-              <p className="text-sm text-muted-foreground">Contractor safety performance</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-2xl font-semibold truncate" data-testid="text-contractor-name">
+                  {client?.name ?? "Loading..."}
+                </h1>
+                {parentClient && <Badge variant="outline" className="text-xs">Subcontractor</Badge>}
+              </div>
+              <p className="text-sm text-muted-foreground" data-testid="text-contractor-subtitle">
+                {parentClient ? (
+                  <>Subcontractor of <Link href={`/safety-ratings/${parentClient.id}`} className="underline hover:text-foreground">{parentClient.name}</Link></>
+                ) : "Contractor safety performance"}
+              </p>
             </div>
             <Button size="sm" onClick={() => setShowNewReport(true)} data-testid="button-add-report">
               <Plus className="h-4 w-4 mr-1.5" /> New Report

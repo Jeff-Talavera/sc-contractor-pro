@@ -55,6 +55,7 @@ export async function exportSafetyReportPDF(
   report: SafetyReport,
   client: Client,
   org: Organization,
+  parentClient?: Client,
 ) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
@@ -110,6 +111,7 @@ export async function exportSafetyReportPDF(
   // Summary table
   const summaryRows: [string, string][] = [
     ["Contractor", client.name],
+    ...(parentClient ? [["Parent Contractor", parentClient.name] as [string, string]] : []),
     ["Contact", `${client.contactName} — ${client.contactEmail}`],
     ["Report Period", `${new Date(report.periodStart + "T12:00:00").toLocaleDateString("en-US")} – ${new Date(report.periodEnd + "T12:00:00").toLocaleDateString("en-US")}`],
     ["Period Type", report.periodType.charAt(0).toUpperCase() + report.periodType.slice(1)],
