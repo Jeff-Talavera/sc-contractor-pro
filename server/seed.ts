@@ -251,12 +251,7 @@ export async function seedSuperAdmin() {
     return;
   }
 
-  const existing = await db.select().from(t.users)
-    .where(and(eq(t.users.id, SUPER_ADMIN_USER_ID), eq(t.users.isSuperAdmin, true)))
-    .limit(1);
-  if (existing.length > 0) return;
-
-  console.log("Seeding super-admin account...");
+  const hash = await bcrypt.hash(bootstrapPassword, 10);
 
   await db.insert(t.organizations).values({
     id: SUPER_ADMIN_ORG_ID,
@@ -265,7 +260,6 @@ export async function seedSuperAdmin() {
     createdAt: new Date().toISOString(),
   }).onConflictDoNothing();
 
-  const hash = await bcrypt.hash(bootstrapPassword, 10);
   await db.insert(t.users).values({
     id: SUPER_ADMIN_USER_ID,
     organizationId: SUPER_ADMIN_ORG_ID,
@@ -275,7 +269,10 @@ export async function seedSuperAdmin() {
     passwordHash: hash,
     isSuperAdmin: true,
     userStatus: "active",
-  }).onConflictDoNothing();
+  }).onConflictDoUpdate({
+    target: t.users.id,
+    set: { passwordHash: hash },
+  });
 
-  console.log(`Super-admin account seeded for ${SUPER_ADMIN_EMAIL}.`);
+  console.log(`Super-admin account ready for ${SUPER_ADMIN_EMAIL}.`);
 }
