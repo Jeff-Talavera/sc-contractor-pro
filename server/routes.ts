@@ -592,7 +592,8 @@ export async function registerRoutes(
   });
 
   app.get("/api/admin/orgs/:orgId", requireSuperAdmin, async (req, res) => {
-    const result = await storage.adminGetOrgWithUsers(req.params.orgId);
+    const orgId = String(req.params.orgId);
+    const result = await storage.adminGetOrgWithUsers(orgId);
     if (!result) return res.status(404).json({ message: "Firm not found" });
     res.json(result);
   });
@@ -602,12 +603,13 @@ export async function registerRoutes(
     if (!["active", "suspended"].includes(status)) {
       return res.status(400).json({ message: "Status must be 'active' or 'suspended'" });
     }
-    const org = await storage.adminUpdateOrgStatus(req.params.orgId, status);
+    const org = await storage.adminUpdateOrgStatus(String(req.params.orgId), status);
     if (!org) return res.status(404).json({ message: "Firm not found" });
     res.json(org);
   });
 
   app.post("/api/admin/orgs/:orgId/users", requireSuperAdmin, async (req, res) => {
+    const orgId = String(req.params.orgId);
     const { name, email, role, password } = req.body;
     if (!name || !email || !role || !password) {
       return res.status(400).json({ message: "Name, email, role, and password are required" });
@@ -615,35 +617,37 @@ export async function registerRoutes(
     if (!["Owner", "Admin", "Inspector"].includes(role)) {
       return res.status(400).json({ message: "Role must be Owner, Admin, or Inspector" });
     }
-    const orgData = await storage.adminGetOrgWithUsers(req.params.orgId);
+    const orgData = await storage.adminGetOrgWithUsers(orgId);
     if (!orgData) return res.status(404).json({ message: "Firm not found" });
-    const user = await storage.adminCreateUser(req.params.orgId, name, email, role, password);
+    const user = await storage.adminCreateUser(orgId, name, email, role, password);
     res.status(201).json(user);
   });
 
   app.patch("/api/admin/users/:userId", requireSuperAdmin, async (req, res) => {
+    const userId = String(req.params.userId);
     const { name, email, role, userStatus } = req.body;
     const updates: Record<string, string> = {};
     if (name) updates.name = name;
     if (email) updates.email = email;
     if (role && ["Owner", "Admin", "Inspector"].includes(role)) updates.role = role;
     if (userStatus && ["active", "inactive"].includes(userStatus)) updates.userStatus = userStatus;
-    const user = await storage.adminUpdateUser(req.params.userId, updates);
+    const user = await storage.adminUpdateUser(userId, updates);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   });
 
   app.post("/api/admin/users/:userId/reset-password", requireSuperAdmin, async (req, res) => {
+    const userId = String(req.params.userId);
     const { newPassword } = req.body;
     if (!newPassword || newPassword.length < 8) {
       return res.status(400).json({ message: "Password must be at least 8 characters" });
     }
-    await storage.adminResetPassword(req.params.userId, newPassword);
+    await storage.adminResetPassword(userId, newPassword);
     res.json({ success: true });
   });
 
   app.get("/api/admin/orgs/:orgId/support", requireSuperAdmin, async (req, res) => {
-    const { orgId } = req.params;
+    const orgId = String(req.params.orgId);
     const [clients, jobsites, inspections] = await Promise.all([
       storage.adminGetOrgClients(orgId),
       storage.adminGetOrgJobsites(orgId),

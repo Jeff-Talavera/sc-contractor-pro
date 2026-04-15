@@ -175,10 +175,10 @@ export default function SettingsPage() {
           <CardContent className="space-y-2">
             {[
               ["Name", meData?.organization?.name],
-              ["Plan", meData?.organization?.plan],
-              ["City", meData?.organization?.city],
-              ["State / Province", meData?.organization?.state],
-              ["Country", meData?.organization?.country],
+              ["Plan", undefined],
+              ["City", undefined],
+              ["State / Province", undefined],
+              ["Country", undefined],
             ].map(([label, value]) => (
               <div key={label} className="flex items-center gap-4 py-1.5 border-b border-border/50 last:border-0">
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide w-36 shrink-0">{label}</span>

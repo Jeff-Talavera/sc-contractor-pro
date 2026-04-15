@@ -7,8 +7,8 @@ import type {
 } from "@shared/schema";
 
 export const mockOrganizations: Organization[] = [
-  { id: "org-1", name: "SafeGuard NYC Consulting", logoUrl: undefined },
-  { id: "org-2", name: "Metro Safety Partners", logoUrl: undefined },
+  { id: "org-1", name: "SafeGuard NYC Consulting", logoUrl: undefined, status: "active" },
+  { id: "org-2", name: "Metro Safety Partners", logoUrl: undefined, status: "active" },
 ];
 
 export const mockUsers: User[] = [
