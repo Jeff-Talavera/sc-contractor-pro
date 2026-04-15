@@ -30,7 +30,15 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
   try {
     const user = await storage.getCurrentUser(req.session.userId);
     if (user.userStatus === "inactive") {
+      req.session.destroy(() => {});
       return res.status(403).json({ message: "Your account has been deactivated" });
+    }
+    if (!user.isSuperAdmin) {
+      const org = await storage.getOrganization(user.organizationId);
+      if (org?.status === "suspended") {
+        req.session.destroy(() => {});
+        return res.status(403).json({ message: "Your organization account has been suspended" });
+      }
     }
     req.user = user;
     next();
