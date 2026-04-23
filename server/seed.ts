@@ -246,12 +246,13 @@ const SUPER_ADMIN_EMAIL = "jt@safetyconnect.app";
 
 export async function seedSuperAdmin() {
   const bootstrapPassword = process.env.SUPER_ADMIN_BOOTSTRAP_PASSWORD;
-  if (!bootstrapPassword) {
-    console.log("SUPER_ADMIN_BOOTSTRAP_PASSWORD not set — skipping super-admin bootstrap seeding.");
+  const jtPassword = process.env.SUPER_ADMIN_JT_PASSWORD ?? bootstrapPassword;
+  if (!jtPassword) {
+    console.log("Neither SUPER_ADMIN_JT_PASSWORD nor SUPER_ADMIN_BOOTSTRAP_PASSWORD is set — skipping super-admin bootstrap seeding.");
     return;
   }
 
-  const hash = await bcrypt.hash(bootstrapPassword, 10);
+  const hash = await bcrypt.hash(jtPassword, 10);
 
   await db.insert(t.organizations).values({
     id: SUPER_ADMIN_ORG_ID,
