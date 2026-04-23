@@ -5,7 +5,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertTradeCompanySchema, type TradeCompany, type InsertTradeCompany, type Jobsite, type JobsiteTradeAssignment } from "@shared/schema";
+import { insertTradeCompanySchema, TRADE_TYPES, type TradeCompany, type InsertTradeCompany, type Jobsite, type JobsiteTradeAssignment } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -28,12 +28,6 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { HardHat, Plus, Search, Pencil, Trash2, ArrowLeft, Building2 } from "lucide-react";
-
-const TRADE_TYPES = [
-  "Concrete", "Demolition", "Electrical", "Elevator", "Excavation",
-  "Fire Protection", "HVAC", "Masonry", "Mechanical", "Plumbing",
-  "Roofing", "Scaffold", "Steel / Structural", "Waterproofing", "Other",
-];
 
 function expiryBadge(dateStr?: string) {
   if (!dateStr) return <Badge variant="outline" className="text-xs">None</Badge>;

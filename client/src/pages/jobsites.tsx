@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation, Link } from "wouter";
-import type { Client, Jobsite, Inspection, InspectionTemplate, User, JobsitePermit, JobsiteExternalEvent, IndependentContractor, ContractorJobsiteAssignment, TradeCompany, JobsiteTradeAssignment } from "@shared/schema";
+import type { Client, Jobsite, Inspection, InspectionTemplate, User, JobsitePermit, JobsiteExternalEvent, IndependentContractor, ContractorJobsiteAssignment, TradeCompany, JobsiteTradeAssignment, TradeAssignmentWithDetails } from "@shared/schema";
 import { insertJobsiteSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Search, Building2, ExternalLink, Plus,
   MapPin, Hash, FileText, Layers, Container,
-  Shield, HardHat, ArrowUp, AlertTriangle, Bell, BellOff, UserCheck,
+  Shield, HardHat, ArrowUp, AlertTriangle, Bell, BellOff, UserCheck, Trash2,
 } from "lucide-react";
 
 function FlagBadge({ active, label }: { active: boolean; label: string }) {
@@ -337,58 +337,163 @@ function JobsiteContractorsTab({ jobsiteId }: { jobsiteId: string }) {
   );
 }
 
-function JobsiteTradesTab({ jobsiteId }: { jobsiteId: string }) {
-  const { data: assignments, isLoading } = useQuery<JobsiteTradeAssignment[]>({
+function tradeBadge(dateStr?: string, label?: string) {
+  if (!dateStr) return <Badge variant="outline" className="text-xs">{label} None</Badge>;
+  const expiry = new Date(dateStr);
+  const now = new Date();
+  const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / 86400000);
+  if (daysLeft < 0) return <Badge className="text-xs bg-red-100 text-red-700 border-red-200">{label} Expired</Badge>;
+  if (daysLeft <= 30) return <Badge className="text-xs bg-amber-100 text-amber-700 border-amber-200">{label} &lt;30d</Badge>;
+  return <Badge className="text-xs bg-green-100 text-green-700 border-green-200">{label} Valid</Badge>;
+}
+
+function AssignTradeDialog({
+  jobsiteId,
+  open,
+  onOpenChange,
+}: {
+  jobsiteId: string;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [selectedTradeId, setSelectedTradeId] = useState("");
+  const [scopeOfWork, setScopeOfWork] = useState("");
+
+  const { data: allTrades = [] } = useQuery<TradeCompany[]>({ queryKey: ["/api/trades"] });
+  const { data: assignedRows = [] } = useQuery<TradeAssignmentWithDetails[]>({
     queryKey: ["/api/jobsites", jobsiteId, "trades"],
   });
-  const { data: allTrades } = useQuery<TradeCompany[]>({ queryKey: ["/api/trades"] });
-  const tradeMap = new Map(allTrades?.map(t => [t.id, t]) ?? []);
+  const assignedIds = new Set(assignedRows.map(r => r.assignment.tradeCompanyId));
+  const available = allTrades.filter(t => !assignedIds.has(t.id));
+
+  const assignMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/trades/${selectedTradeId}/assign`, {
+        jobsiteId,
+        scopeOfWork: scopeOfWork || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobsites", jobsiteId, "trades"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/counts"] });
+      setSelectedTradeId("");
+      setScopeOfWork("");
+      onOpenChange(false);
+      toast({ title: "Trade company assigned to jobsite" });
+    },
+    onError: () => toast({ title: "Error assigning trade", variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Assign Trade Company</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium">Trade Company *</label>
+            <Select value={selectedTradeId} onValueChange={setSelectedTradeId}>
+              <SelectTrigger data-testid="select-assign-trade" className="mt-1">
+                <SelectValue placeholder="Select trade company…" />
+              </SelectTrigger>
+              <SelectContent>
+                {available.length === 0
+                  ? <SelectItem value="_none" disabled>All trades already assigned</SelectItem>
+                  : available.map(t => <SelectItem key={t.id} value={t.id}>{t.name} ({t.tradeType})</SelectItem>)
+                }
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-sm font-medium">Scope of Work</label>
+            <Input
+              className="mt-1"
+              data-testid="input-trade-scope"
+              placeholder="e.g. Electrical rough-in and finish"
+              value={scopeOfWork}
+              onChange={e => setScopeOfWork(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            data-testid="button-confirm-assign-trade"
+            disabled={!selectedTradeId || assignMutation.isPending}
+            onClick={() => assignMutation.mutate()}
+          >
+            {assignMutation.isPending ? "Assigning…" : "Assign"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function JobsiteTradesTab({ jobsiteId }: { jobsiteId: string }) {
+  const { toast } = useToast();
+  const [showAssign, setShowAssign] = useState(false);
+
+  const { data: assignedRows, isLoading } = useQuery<TradeAssignmentWithDetails[]>({
+    queryKey: ["/api/jobsites", jobsiteId, "trades"],
+  });
+
+  const removeAssignmentMutation = useMutation({
+    mutationFn: (assignmentId: string) => apiRequest("DELETE", `/api/jobsite-trade-assignments/${assignmentId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobsites", jobsiteId, "trades"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/counts"] });
+      toast({ title: "Assignment removed" });
+    },
+    onError: () => toast({ title: "Error removing assignment", variant: "destructive" }),
+  });
 
   if (isLoading) {
     return <div className="space-y-2"><div className="h-10 bg-muted rounded animate-pulse" /><div className="h-10 bg-muted rounded animate-pulse" /></div>;
   }
 
-  if (!assignments || assignments.length === 0) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        <HardHat className="h-10 w-10 mx-auto mb-2 opacity-30" />
-        <p className="text-sm">No trade companies assigned to this jobsite</p>
-        <p className="text-xs mt-1">Assign from the <Link href="/trades"><span className="underline cursor-pointer">Trades</span></Link> page</p>
-      </div>
-    );
-  }
-
-  function tradeBadge(dateStr?: string, label?: string) {
-    if (!dateStr) return <Badge variant="outline" className="text-xs">{label} None</Badge>;
-    const expiry = new Date(dateStr);
-    const now = new Date();
-    const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / 86400000);
-    if (daysLeft < 0) return <Badge className="text-xs bg-red-100 text-red-700 border-red-200">{label} Expired</Badge>;
-    if (daysLeft <= 30) return <Badge className="text-xs bg-amber-100 text-amber-700 border-amber-200">{label} &lt;30d</Badge>;
-    return <Badge className="text-xs bg-green-100 text-green-700 border-green-200">{label} Valid</Badge>;
-  }
-
   return (
-    <div className="space-y-3">
-      {assignments.map(a => {
-        const tc = tradeMap.get(a.tradeCompanyId);
-        if (!tc) return null;
-        return (
-          <div key={a.id} className="flex items-center justify-between gap-4 p-3 border rounded-lg" data-testid={`card-jobsite-trade-${a.tradeCompanyId}`}>
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-sm">{tc.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {tc.tradeType}{a.scopeOfWork ? ` · ${a.scopeOfWork}` : ""}
-              </p>
+    <>
+      <div className="flex items-center justify-end mb-3">
+        <Button size="sm" variant="outline" data-testid="button-assign-trade-jobsite" onClick={() => setShowAssign(true)}>
+          <Plus className="h-4 w-4 mr-1" /> Assign Trade
+        </Button>
+      </div>
+      {(!assignedRows || assignedRows.length === 0) ? (
+        <div className="text-center py-6 text-muted-foreground">
+          <HardHat className="h-10 w-10 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">No trade companies assigned to this jobsite</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {assignedRows.map(({ assignment: a, company: tc }) => (
+            <div key={a.id} className="flex items-center justify-between gap-4 p-3 border rounded-lg" data-testid={`card-jobsite-trade-${tc.id}`}>
+              <div className="min-w-0 flex-1">
+                <Link href="/trades">
+                  <p className="font-medium text-sm hover:underline cursor-pointer">{tc.name}</p>
+                </Link>
+                <p className="text-xs text-muted-foreground">
+                  {tc.tradeType}{a.scopeOfWork ? ` · ${a.scopeOfWork}` : ""}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {tradeBadge(tc.coiExpiryDate, "COI")}
+                {tradeBadge(tc.wcExpiryDate, "WC")}
+                <Button
+                  variant="ghost" size="icon" className="h-7 w-7"
+                  data-testid={`button-remove-trade-${a.id}`}
+                  onClick={() => removeAssignmentMutation.mutate(a.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                </Button>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {tradeBadge(tc.coiExpiryDate, "COI")}
-              {tradeBadge(tc.wcExpiryDate, "WC")}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+          ))}
+        </div>
+      )}
+      <AssignTradeDialog jobsiteId={jobsiteId} open={showAssign} onOpenChange={setShowAssign} />
+    </>
   );
 }
 

@@ -754,7 +754,7 @@ export async function registerRoutes(
     const jobsite = await storage.getJobsite(req.params.id);
     if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
     if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
-    res.json(await storage.getTradesByJobsite(req.params.id));
+    res.json(await storage.getTradesWithDetailsByJobsite(req.params.id));
   });
 
   app.delete("/api/jobsite-trade-assignments/:id", async (req, res) => {

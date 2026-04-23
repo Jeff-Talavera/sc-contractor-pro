@@ -463,9 +463,22 @@ export interface JobsiteTradeAssignment {
   endDate?: string;
 }
 
+export const TRADE_TYPES = [
+  "Concrete", "Demolition", "Electrical", "Elevator", "Excavation",
+  "Fire Protection", "HVAC", "Masonry", "Mechanical", "Plumbing",
+  "Roofing", "Scaffold", "Steel / Structural", "Waterproofing", "Other",
+] as const;
+
+export type TradeType = typeof TRADE_TYPES[number];
+
+export interface TradeAssignmentWithDetails {
+  assignment: JobsiteTradeAssignment;
+  company: TradeCompany;
+}
+
 export const insertTradeCompanySchema = z.object({
   name: z.string().min(1, "Company name is required"),
-  tradeType: z.string().min(1, "Trade type is required"),
+  tradeType: z.enum(TRADE_TYPES),
   contactName: z.string().optional(),
   contactEmail: z.string().email("Valid email required").optional().or(z.literal("")),
   contactPhone: z.string().optional(),
