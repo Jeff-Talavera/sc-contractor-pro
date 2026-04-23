@@ -310,3 +310,22 @@ export const jobsiteTradeAssignments = pgTable("jobsite_trade_assignments", {
   startDate: text("start_date"),
   endDate: text("end_date"),
 });
+
+export const contacts = pgTable("contacts", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  name: text("name").notNull(),
+  title: text("title"),
+  email: text("email"),
+  phone: text("phone"),
+  company: text("company"),
+  notes: text("notes"),
+});
+
+export const contactAssociations = pgTable("contact_associations", {
+  id: text("id").primaryKey(),
+  contactId: text("contact_id").notNull().references(() => contacts.id),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  relationship: text("relationship"),
+});

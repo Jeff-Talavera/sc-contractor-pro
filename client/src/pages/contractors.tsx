@@ -19,6 +19,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { ContactsCard } from "@/components/contacts-card";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Plus, Search, UserCheck, Phone, Mail, FileText,
@@ -570,6 +571,10 @@ function ContractorDetail({ id }: { id: string }) {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      <div className="px-6 pb-6 max-w-5xl mx-auto">
+        <ContactsCard entityType="contractor" entityId={id} title="Contacts" />
       </div>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>

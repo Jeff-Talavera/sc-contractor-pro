@@ -8,7 +8,8 @@ import {
   insertEmployeeProfileSchema, insertScheduleEntrySchema, insertTimesheetSchema, insertTimesheetEntrySchema,
   updateInspectionReportSchema, insertSafetyReportSchema, updateSafetySettingsSchema, updateOrganizationSchema,
   insertIndependentContractorSchema, insertContractorAssignmentSchema,
-  insertTradeCompanySchema, insertJobsiteTradeAssignmentSchema
+  insertTradeCompanySchema, insertJobsiteTradeAssignmentSchema,
+  insertContactSchema, insertContactAssociationSchema
 } from "@shared/schema";
 import type { AiFinding, User, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
@@ -853,6 +854,72 @@ export async function registerRoutes(
     if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
     if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
     res.json(await storage.getAssignmentsByJobsite(req.params.id));
+  });
+
+  // ─── Contacts ─────────────────────────────────────────────────────────────
+
+  app.get("/api/contacts", async (req, res) => {
+    const { entityType, entityId } = req.query as { entityType?: string; entityId?: string };
+    if (entityType && entityId) {
+      return res.json(await storage.getContactsByEntity(entityType, entityId));
+    }
+    res.json(await storage.getContactsByOrg(req.user!.organizationId));
+  });
+
+  app.post("/api/contacts", async (req, res) => {
+    const parsed = insertContactSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const contact = await storage.createContact(req.user!.organizationId, parsed.data);
+    res.status(201).json(contact);
+  });
+
+  app.get("/api/contacts/:id", async (req, res) => {
+    const contact = await storage.getContactWithAssociations(req.params.id);
+    if (!contact) return res.status(404).json({ message: "Contact not found" });
+    if (contact.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    res.json(contact);
+  });
+
+  app.patch("/api/contacts/:id", async (req, res) => {
+    const contact = await storage.getContact(req.params.id);
+    if (!contact) return res.status(404).json({ message: "Contact not found" });
+    if (contact.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    const parsed = insertContactSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const updated = await storage.updateContact(req.params.id, parsed.data);
+    res.json(updated);
+  });
+
+  app.delete("/api/contacts/:id", async (req, res) => {
+    const contact = await storage.getContact(req.params.id);
+    if (!contact) return res.status(404).json({ message: "Contact not found" });
+    if (contact.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteContact(req.params.id);
+    res.status(204).send();
+  });
+
+  app.post("/api/contacts/:id/associations", async (req, res) => {
+    const contact = await storage.getContact(req.params.id);
+    if (!contact) return res.status(404).json({ message: "Contact not found" });
+    if (contact.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    const parsed = insertContactAssociationSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const assoc = await storage.createContactAssociation(req.params.id, parsed.data);
+    res.status(201).json(assoc);
+  });
+
+  app.delete("/api/contact-associations/:id", async (req, res) => {
+    const assoc = await storage.getContactAssociation(req.params.id);
+    if (!assoc) return res.status(404).json({ message: "Association not found" });
+    const contact = await storage.getContact(assoc.contactId);
+    if (!contact || contact.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteContactAssociation(req.params.id);
+    res.status(204).send();
+  });
+
+  app.get("/api/entities/:entityType/:entityId/contacts", async (req, res) => {
+    const { entityType, entityId } = req.params;
+    res.json(await storage.getContactsByEntity(entityType, entityId));
   });
 
   // ─── AI Photo Analysis ──────────────────────────────────────────────────────

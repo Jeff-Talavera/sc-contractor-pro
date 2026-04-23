@@ -543,6 +543,52 @@ export const updateSafetySettingsSchema = z.object({
   { message: "Scoring weights must sum to exactly 100" }
 );
 
+// ─── Contacts ─────────────────────────────────────────────────────────────────
+
+export interface Contact {
+  id: string;
+  organizationId: string;
+  name: string;
+  title?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  company?: string | null;
+  notes?: string | null;
+}
+
+export interface ContactAssociation {
+  id: string;
+  contactId: string;
+  entityType: string;
+  entityId: string;
+  relationship?: string | null;
+}
+
+export interface ContactWithAssociations extends Contact {
+  associations: ContactAssociation[];
+}
+
+export const ENTITY_TYPES = ["jobsite", "client", "trade_company", "contractor"] as const;
+export type EntityType = typeof ENTITY_TYPES[number];
+
+export const insertContactSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  title: z.string().optional(),
+  email: z.string().email("Valid email required").optional().or(z.literal("")),
+  phone: z.string().optional(),
+  company: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const insertContactAssociationSchema = z.object({
+  entityType: z.enum(ENTITY_TYPES),
+  entityId: z.string().min(1),
+  relationship: z.string().optional(),
+});
+
+export type InsertContact = z.infer<typeof insertContactSchema>;
+export type InsertContactAssociation = z.infer<typeof insertContactAssociationSchema>;
+
 export type InsertClient = z.infer<typeof insertClientSchema>;
 export type InsertJobsite = z.infer<typeof insertJobsiteSchema>;
 export type InsertInspection = z.infer<typeof insertInspectionSchema>;

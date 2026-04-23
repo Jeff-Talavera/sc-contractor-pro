@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation, Link } from "wouter";
+import { ContactsCard } from "@/components/contacts-card";
 import type { Client, Jobsite, SafetyReport } from "@shared/schema";
 import { insertClientSchema, insertJobsiteSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -718,6 +719,8 @@ function ClientDetail({ id }: { id: string }) {
               </div>
             )}
           </div>
+
+          <ContactsCard entityType="client" entityId={id} title="Contacts" />
         </div>
       </div>
     </div>

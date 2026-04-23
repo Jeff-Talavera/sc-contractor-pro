@@ -6,12 +6,14 @@ import type {
   SafetyReport, SafetyReportSettings,
   IndependentContractor, ContractorJobsiteAssignment,
   TradeCompany, JobsiteTradeAssignment,
+  Contact, ContactAssociation, ContactWithAssociations,
   InsertClient, InsertJobsite, InsertInspection, InsertObservation,
   InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry,
   InsertSafetyReport, UpdateSafetySettings, UpdateOrganization,
   UpdateInspectionReport,
   InsertIndependentContractor, InsertContractorAssignment,
-  InsertTradeCompany, InsertJobsiteTradeAssignment
+  InsertTradeCompany, InsertJobsiteTradeAssignment,
+  InsertContact, InsertContactAssociation
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
@@ -461,6 +463,18 @@ export interface IStorage {
   getAssignmentsByJobsite(jobsiteId: string): Promise<ContractorJobsiteAssignment[]>;
   createContractorAssignment(contractorId: string, data: InsertContractorAssignment): Promise<ContractorJobsiteAssignment>;
   deleteContractorAssignment(assignmentId: string): Promise<boolean>;
+
+  // ─── Contacts ─────────────────────────────────────────────────────────────
+  getContactsByOrg(orgId: string): Promise<Contact[]>;
+  getContactsByEntity(entityType: string, entityId: string): Promise<ContactWithAssociations[]>;
+  getContact(id: string): Promise<Contact | undefined>;
+  getContactWithAssociations(id: string): Promise<ContactWithAssociations | undefined>;
+  createContact(orgId: string, data: InsertContact): Promise<Contact>;
+  updateContact(id: string, updates: Partial<Contact>): Promise<Contact | undefined>;
+  deleteContact(id: string): Promise<boolean>;
+  createContactAssociation(contactId: string, data: InsertContactAssociation): Promise<ContactAssociation>;
+  deleteContactAssociation(id: string): Promise<boolean>;
+  getContactAssociation(id: string): Promise<ContactAssociation | undefined>;
 
   // ─── Super-admin methods ──────────────────────────────────────────────────
   adminListOrgs(): Promise<Organization[]>;
@@ -1272,6 +1286,77 @@ export class DatabaseStorage implements IStorage {
       .where(eq(t.contractorJobsiteAssignments.id, assignmentId))
       .returning();
     return result.length > 0;
+  }
+
+  // ─── Contacts ─────────────────────────────────────────────────────────────
+
+  async getContactsByOrg(orgId: string): Promise<Contact[]> {
+    return db.select().from(t.contacts).where(eq(t.contacts.organizationId, orgId));
+  }
+
+  async getContactsByEntity(entityType: string, entityId: string): Promise<ContactWithAssociations[]> {
+    const assocs = await db.select().from(t.contactAssociations)
+      .where(and(eq(t.contactAssociations.entityType, entityType), eq(t.contactAssociations.entityId, entityId)));
+    if (assocs.length === 0) return [];
+    const contactIds = [...new Set(assocs.map(a => a.contactId))];
+    const allContacts: Contact[] = [];
+    for (const cid of contactIds) {
+      const rows = await db.select().from(t.contacts).where(eq(t.contacts.id, cid));
+      if (rows[0]) allContacts.push(rows[0]);
+    }
+    const allAssocs = await db.select().from(t.contactAssociations)
+      .where(eq(t.contactAssociations.entityType, entityType));
+    return allContacts.map(c => ({
+      ...c,
+      associations: allAssocs.filter(a => a.contactId === c.id),
+    }));
+  }
+
+  async getContact(id: string): Promise<Contact | undefined> {
+    const rows = await db.select().from(t.contacts).where(eq(t.contacts.id, id));
+    return rows[0];
+  }
+
+  async getContactWithAssociations(id: string): Promise<ContactWithAssociations | undefined> {
+    const contact = await this.getContact(id);
+    if (!contact) return undefined;
+    const associations = await db.select().from(t.contactAssociations)
+      .where(eq(t.contactAssociations.contactId, id));
+    return { ...contact, associations };
+  }
+
+  async createContact(orgId: string, data: InsertContact): Promise<Contact> {
+    const id = randomUUID();
+    const rows = await db.insert(t.contacts).values({ id, organizationId: orgId, ...data }).returning();
+    return rows[0];
+  }
+
+  async updateContact(id: string, updates: Partial<Contact>): Promise<Contact | undefined> {
+    const { id: _id, organizationId: _org, ...safe } = updates as Contact;
+    const rows = await db.update(t.contacts).set(safe).where(eq(t.contacts.id, id)).returning();
+    return rows[0];
+  }
+
+  async deleteContact(id: string): Promise<boolean> {
+    await db.delete(t.contactAssociations).where(eq(t.contactAssociations.contactId, id));
+    const result = await db.delete(t.contacts).where(eq(t.contacts.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async createContactAssociation(contactId: string, data: InsertContactAssociation): Promise<ContactAssociation> {
+    const id = randomUUID();
+    const rows = await db.insert(t.contactAssociations).values({ id, contactId, ...data }).returning();
+    return rows[0];
+  }
+
+  async deleteContactAssociation(id: string): Promise<boolean> {
+    const result = await db.delete(t.contactAssociations).where(eq(t.contactAssociations.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getContactAssociation(id: string): Promise<ContactAssociation | undefined> {
+    const rows = await db.select().from(t.contactAssociations).where(eq(t.contactAssociations.id, id));
+    return rows[0];
   }
 }
 

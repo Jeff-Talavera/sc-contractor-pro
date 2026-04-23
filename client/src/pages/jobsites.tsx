@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { ContactsCard } from "@/components/contacts-card";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Search, Building2, ExternalLink, Plus,
@@ -955,6 +956,8 @@ function JobsiteDetail({ id }: { id: string }) {
               <JobsiteTradesTab jobsiteId={id} />
             </CardContent>
           </Card>
+
+          <ContactsCard entityType="jobsite" entityId={id} title="Contacts" />
 
           <Card data-testid="card-public-records">
             <CardHeader>

@@ -28,6 +28,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { HardHat, Plus, Search, Pencil, Trash2, ArrowLeft, Building2 } from "lucide-react";
+import { ContactsCard } from "@/components/contacts-card";
 
 function expiryBadge(dateStr?: string) {
   if (!dateStr) return <Badge variant="outline" className="text-xs">None</Badge>;
@@ -678,6 +679,8 @@ function TradeDetail({
           )}
         </CardContent>
       </Card>
+
+      <ContactsCard entityType="trade_company" entityId={trade.id} title="Contacts" />
 
       <AssignToJobsiteDialog
         tradeId={trade.id}

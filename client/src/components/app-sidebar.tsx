@@ -10,6 +10,7 @@ import {
   UserCheck,
   Shield,
   Settings,
+  BookUser,
 } from "lucide-react";
 import {
   Sidebar,
@@ -33,6 +34,7 @@ const navItems = [
   { title: "Workforce", url: "/workforce", icon: UserCog },
   { title: "Contractors", url: "/contractors", icon: UserCheck },
   { title: "Trades", url: "/trades", icon: HardHat },
+  { title: "Contacts", url: "/contacts", icon: BookUser },
   { title: "Safety Ratings", url: "/safety-ratings", icon: Shield },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
