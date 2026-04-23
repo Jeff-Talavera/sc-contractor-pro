@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import bcrypt from "bcrypt";
+import { z } from "zod";
 import {
   insertClientSchema, insertJobsiteSchema, insertInspectionSchema, insertObservationSchema,
   insertEmployeeProfileSchema, insertScheduleEntrySchema, insertTimesheetSchema, insertTimesheetEntrySchema,
@@ -733,10 +734,16 @@ export async function registerRoutes(
     const trade = await storage.getTrade(req.params.id);
     if (!trade) return res.status(404).json({ message: "Trade company not found" });
     if (trade.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
-    const { jobsiteId, clientId, scopeOfWork, startDate, endDate } = req.body as {
-      jobsiteId?: string; clientId?: string; scopeOfWork?: string; startDate?: string; endDate?: string;
-    };
-    if (!jobsiteId) return res.status(400).json({ message: "jobsiteId is required" });
+    const assignSchema = z.object({
+      jobsiteId: z.string().min(1, "jobsiteId is required"),
+      clientId: z.string().optional(),
+      scopeOfWork: z.string().optional(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    });
+    const bodyParsed = assignSchema.safeParse(req.body);
+    if (!bodyParsed.success) return res.status(400).json({ message: bodyParsed.error.message });
+    const { jobsiteId, clientId, scopeOfWork, startDate, endDate } = bodyParsed.data;
     const jobsiteRecord = await storage.getJobsite(jobsiteId);
     if (!jobsiteRecord) return res.status(404).json({ message: "Jobsite not found" });
     if (jobsiteRecord.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
