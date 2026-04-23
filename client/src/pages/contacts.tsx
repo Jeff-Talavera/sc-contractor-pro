@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Plus, Search, Mail, Phone, Building2, Pencil, Trash2, Link2, X } from "lucide-react";
 import type { Contact, ContactWithAssociations, InsertContact } from "@shared/schema";
-import { insertContactSchema, ENTITY_TYPES } from "@shared/schema";
+import { insertContactSchema } from "@shared/schema";
 
 const ENTITY_LABELS: Record<string, string> = {
   jobsite: "Jobsite",

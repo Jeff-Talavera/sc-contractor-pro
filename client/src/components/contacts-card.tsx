@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Plus, Trash2, Mail, Phone, User, Building2, Link2, Pencil } from "lucide-react";
 import type { Contact, ContactWithAssociations, InsertContact } from "@shared/schema";
-import { insertContactSchema, ENTITY_TYPES } from "@shared/schema";
+import { insertContactSchema } from "@shared/schema";
 
 interface ContactsCardProps {
   entityType: "jobsite" | "client" | "trade_company" | "contractor";
@@ -46,7 +46,7 @@ export function ContactsCard({ entityType, entityId, title = "Contacts" }: Conta
   });
 
   const form = useForm<ContactFormValues>({
-    resolver: zodResolver(insertContactSchema.extend({})),
+    resolver: zodResolver(insertContactSchema),
     defaultValues: { name: "", title: "", email: "", phone: "", company: "", notes: "", relationship: "" },
   });
 
