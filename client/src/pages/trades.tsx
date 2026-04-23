@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertTradeCompanySchema, type TradeCompany, type InsertTradeCompany } from "@shared/schema";
+import { insertTradeCompanySchema, type TradeCompany, type InsertTradeCompany, type Jobsite, type JobsiteTradeAssignment } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +27,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { HardHat, Plus, Search, Pencil, Trash2, ArrowLeft } from "lucide-react";
+import { HardHat, Plus, Search, Pencil, Trash2, ArrowLeft, Building2 } from "lucide-react";
 
 const TRADE_TYPES = [
   "Concrete", "Demolition", "Electrical", "Elevator", "Excavation",
@@ -171,7 +171,6 @@ function TradeForm({
 
 export default function TradesPage() {
   const { toast } = useToast();
-  const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [tradeTypeFilter, setTradeTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -184,10 +183,18 @@ export default function TradesPage() {
     queryKey: ["/api/trades"],
   });
 
+  const { data: counts = {} } = useQuery<Record<string, number>>({
+    queryKey: ["/api/trades/counts"],
+  });
+
   const createMutation = useMutation({
-    mutationFn: (data: InsertTradeCompany) => apiRequest("POST", "/api/trades", data),
+    mutationFn: async (data: InsertTradeCompany) => {
+      const res = await apiRequest("POST", "/api/trades", data);
+      return res.json() as Promise<TradeCompany>;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/counts"] });
       setShowCreate(false);
       toast({ title: "Trade company created" });
     },
@@ -195,9 +202,11 @@ export default function TradesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: InsertTradeCompany) => apiRequest("PATCH", `/api/trades/${editTrade?.id}`, data),
-    onSuccess: async (res) => {
-      const updated = await res.json();
+    mutationFn: async (data: InsertTradeCompany) => {
+      const res = await apiRequest("PATCH", `/api/trades/${editTrade?.id}`, data);
+      return res.json() as Promise<TradeCompany>;
+    },
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
       if (selectedTrade?.id === editTrade?.id) setSelectedTrade(updated);
       setEditTrade(null);
@@ -210,6 +219,7 @@ export default function TradesPage() {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/trades/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/counts"] });
       if (selectedTrade?.id === deleteTrade?.id) setSelectedTrade(null);
       setDeleteTrade(null);
       toast({ title: "Trade company deleted" });
@@ -226,7 +236,22 @@ export default function TradesPage() {
   });
 
   if (selectedTrade) {
-    return <TradeDetail trade={selectedTrade} onBack={() => setSelectedTrade(null)} onEdit={() => setEditTrade(selectedTrade)} onDelete={() => setDeleteTrade(selectedTrade)} editTrade={editTrade} setEditTrade={setEditTrade} updateMutation={updateMutation} deleteTrade={deleteTrade} setDeleteTrade={setDeleteTrade} deleteMutation={deleteMutation} />;
+    return (
+      <TradeDetail
+        trade={selectedTrade}
+        onBack={() => setSelectedTrade(null)}
+        onTradeUpdated={(updated) => {
+          setSelectedTrade(updated);
+          queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/trades/counts"] });
+        }}
+        onTradeDeleted={() => {
+          setSelectedTrade(null);
+          queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/trades/counts"] });
+        }}
+      />
+    );
   }
 
   return (
@@ -293,6 +318,7 @@ export default function TradesPage() {
                   <TableHead>Contact</TableHead>
                   <TableHead>COI Status</TableHead>
                   <TableHead>WC Status</TableHead>
+                  <TableHead>Projects</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-24" />
                 </TableRow>
@@ -314,6 +340,9 @@ export default function TradesPage() {
                     </TableCell>
                     <TableCell>{expiryBadge(trade.coiExpiryDate)}</TableCell>
                     <TableCell>{expiryBadge(trade.wcExpiryDate)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground" data-testid={`text-project-count-${trade.id}`}>
+                      {counts[trade.id] ?? 0}
+                    </TableCell>
                     <TableCell>
                       <Badge
                         variant={trade.status === "active" ? "default" : "secondary"}
@@ -397,20 +426,151 @@ export default function TradesPage() {
   );
 }
 
+function AssignToJobsiteDialog({
+  tradeId,
+  open,
+  onOpenChange,
+}: {
+  tradeId: string;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [selectedJobsiteId, setSelectedJobsiteId] = useState("");
+  const [scopeOfWork, setScopeOfWork] = useState("");
+
+  const { data: jobsites = [] } = useQuery<Jobsite[]>({ queryKey: ["/api/jobsites"] });
+  const { data: existingAssignments = [] } = useQuery<JobsiteTradeAssignment[]>({
+    queryKey: ["/api/trades", tradeId, "assignments"],
+  });
+
+  const assignedJobsiteIds = new Set(existingAssignments.map(a => a.jobsiteId));
+  const availableJobsites = jobsites.filter(j => !assignedJobsiteIds.has(j.id));
+
+  const assignMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/trades/${tradeId}/assign`, {
+        jobsiteId: selectedJobsiteId,
+        scopeOfWork: scopeOfWork || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trades", tradeId, "assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/jobsites"] });
+      setSelectedJobsiteId("");
+      setScopeOfWork("");
+      onOpenChange(false);
+      toast({ title: "Assigned to jobsite" });
+    },
+    onError: () => toast({ title: "Error assigning to jobsite", variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Assign to Jobsite</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium">Jobsite *</label>
+            <Select value={selectedJobsiteId} onValueChange={setSelectedJobsiteId}>
+              <SelectTrigger data-testid="select-assign-jobsite" className="mt-1">
+                <SelectValue placeholder="Select a jobsite…" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableJobsites.length === 0 ? (
+                  <SelectItem value="_none" disabled>All jobsites already assigned</SelectItem>
+                ) : (
+                  availableJobsites.map(j => (
+                    <SelectItem key={j.id} value={j.id}>{j.name}</SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-sm font-medium">Scope of Work</label>
+            <Input
+              className="mt-1"
+              data-testid="input-scope-of-work"
+              placeholder="e.g. Electrical rough-in and finish"
+              value={scopeOfWork}
+              onChange={e => setScopeOfWork(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            data-testid="button-confirm-assign"
+            disabled={!selectedJobsiteId || assignMutation.isPending}
+            onClick={() => assignMutation.mutate()}
+          >
+            {assignMutation.isPending ? "Assigning…" : "Assign"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TradeDetail({
-  trade, onBack, onEdit, onDelete, editTrade, setEditTrade, updateMutation, deleteTrade, setDeleteTrade, deleteMutation,
+  trade,
+  onBack,
+  onTradeUpdated,
+  onTradeDeleted,
 }: {
   trade: TradeCompany;
   onBack: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  editTrade: TradeCompany | null;
-  setEditTrade: (t: TradeCompany | null) => void;
-  updateMutation: any;
-  deleteTrade: TradeCompany | null;
-  setDeleteTrade: (t: TradeCompany | null) => void;
-  deleteMutation: any;
+  onTradeUpdated: (t: TradeCompany) => void;
+  onTradeDeleted: () => void;
 }) {
+  const { toast } = useToast();
+  const [showEdit, setShowEdit] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [showAssign, setShowAssign] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const { data: assignments = [] } = useQuery<JobsiteTradeAssignment[]>({
+    queryKey: ["/api/trades", trade.id, "assignments"],
+  });
+  const { data: jobsites = [] } = useQuery<Jobsite[]>({ queryKey: ["/api/jobsites"] });
+  const jobsiteMap = new Map(jobsites.map(j => [j.id, j]));
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: InsertTradeCompany) => {
+      const res = await apiRequest("PATCH", `/api/trades/${trade.id}`, data);
+      return res.json() as Promise<TradeCompany>;
+    },
+    onSuccess: (updated) => {
+      setShowEdit(false);
+      onTradeUpdated(updated);
+      toast({ title: "Trade company updated" });
+    },
+    onError: () => toast({ title: "Error updating trade company", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/trades/${trade.id}`),
+    onSuccess: () => {
+      onTradeDeleted();
+      toast({ title: "Trade company deleted" });
+    },
+    onError: () => toast({ title: "Error deleting trade company", variant: "destructive" }),
+  });
+
+  const removeAssignmentMutation = useMutation({
+    mutationFn: (assignmentId: string) => apiRequest("DELETE", `/api/jobsite-trade-assignments/${assignmentId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trades", trade.id, "assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/counts"] });
+      setRemovingId(null);
+      toast({ title: "Assignment removed" });
+    },
+    onError: () => toast({ title: "Error removing assignment", variant: "destructive" }),
+  });
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
@@ -430,10 +590,10 @@ function TradeDetail({
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={onEdit} data-testid="button-edit-trade">
+          <Button variant="outline" size="sm" onClick={() => setShowEdit(true)} data-testid="button-edit-trade">
             <Pencil className="h-4 w-4 mr-1" /> Edit
           </Button>
-          <Button variant="destructive" size="sm" onClick={onDelete} data-testid="button-delete-trade">
+          <Button variant="destructive" size="sm" onClick={() => setShowDelete(true)} data-testid="button-delete-trade">
             <Trash2 className="h-4 w-4 mr-1" /> Delete
           </Button>
         </div>
@@ -484,24 +644,69 @@ function TradeDetail({
         )}
       </div>
 
-      <Dialog open={!!editTrade} onOpenChange={o => { if (!o) setEditTrade(null); }}>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Building2 className="h-4 w-4" /> Jobsite Assignments
+            </CardTitle>
+            <Button size="sm" data-testid="button-assign-jobsite" onClick={() => setShowAssign(true)}>
+              <Plus className="h-4 w-4 mr-1" /> Assign to Jobsite
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {assignments.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground text-sm">
+              No jobsite assignments yet
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {assignments.map(a => {
+                const jobsite = jobsiteMap.get(a.jobsiteId);
+                return (
+                  <div key={a.id} className="flex items-center justify-between gap-4 p-3 border rounded-lg" data-testid={`card-assignment-${a.id}`}>
+                    <div>
+                      <p className="text-sm font-medium">{jobsite?.name ?? a.jobsiteId}</p>
+                      {a.scopeOfWork && <p className="text-xs text-muted-foreground">{a.scopeOfWork}</p>}
+                    </div>
+                    <Button
+                      variant="ghost" size="icon"
+                      data-testid={`button-remove-assignment-${a.id}`}
+                      onClick={() => setRemovingId(a.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <AssignToJobsiteDialog
+        tradeId={trade.id}
+        open={showAssign}
+        onOpenChange={setShowAssign}
+      />
+
+      <Dialog open={showEdit} onOpenChange={o => { if (!o) setShowEdit(false); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Edit Trade Company</DialogTitle></DialogHeader>
-          {editTrade && (
-            <TradeForm
-              defaultValues={editTrade}
-              onSubmit={d => updateMutation.mutate(d)}
-              isPending={updateMutation.isPending}
-              onCancel={() => setEditTrade(null)}
-            />
-          )}
+          <TradeForm
+            defaultValues={trade}
+            onSubmit={d => updateMutation.mutate(d)}
+            isPending={updateMutation.isPending}
+            onCancel={() => setShowEdit(false)}
+          />
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleteTrade} onOpenChange={o => { if (!o) setDeleteTrade(null); }}>
+      <AlertDialog open={showDelete} onOpenChange={setShowDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleteTrade?.name}?</AlertDialogTitle>
+            <AlertDialogTitle>Delete {trade.name}?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete this trade company and all jobsite assignments.
             </AlertDialogDescription>
@@ -511,9 +716,30 @@ function TradeDetail({
             <AlertDialogAction
               data-testid="button-confirm-delete-trade"
               className="bg-red-600 hover:bg-red-700"
-              onClick={() => deleteTrade && deleteMutation.mutate(deleteTrade.id)}
+              onClick={() => deleteMutation.mutate()}
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!removingId} onOpenChange={o => { if (!o) setRemovingId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove assignment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove this trade company from the jobsite.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-remove-assignment"
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => removingId && removeAssignmentMutation.mutate(removingId)}
+            >
+              Remove
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

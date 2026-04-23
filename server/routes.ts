@@ -671,8 +671,23 @@ export async function registerRoutes(
   // ─── Trade Companies ──────────────────────────────────────────────────────
 
   app.get("/api/trades", async (req, res) => {
-    const trades = await storage.getTradesByOrg(req.user!.organizationId);
+    const { jobsiteId } = req.query as { jobsiteId?: string };
+    let trades = await storage.getTradesByOrg(req.user!.organizationId);
+    if (jobsiteId) {
+      const assignments = await storage.getTradesByJobsite(jobsiteId);
+      const assignedIds = new Set(assignments.map(a => a.tradeCompanyId));
+      trades = trades.filter(t => assignedIds.has(t.id));
+    }
     res.json(trades);
+  });
+
+  app.get("/api/trades/counts", async (req, res) => {
+    const assignments = await storage.getAllTradeAssignmentsByOrg(req.user!.organizationId);
+    const counts: Record<string, number> = {};
+    for (const a of assignments) {
+      counts[a.tradeCompanyId] = (counts[a.tradeCompanyId] ?? 0) + 1;
+    }
+    res.json(counts);
   });
 
   app.get("/api/trades/:id", async (req, res) => {
@@ -743,6 +758,12 @@ export async function registerRoutes(
   });
 
   app.delete("/api/jobsite-trade-assignments/:id", async (req, res) => {
+    const assignment = await storage.getTradeAssignment(req.params.id);
+    if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+    const trade = await storage.getTrade(assignment.tradeCompanyId);
+    if (!trade || trade.organizationId !== req.user!.organizationId) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
     await storage.deleteTradeAssignment(req.params.id);
     res.status(204).end();
   });

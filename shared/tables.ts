@@ -305,7 +305,7 @@ export const jobsiteTradeAssignments = pgTable("jobsite_trade_assignments", {
   id: text("id").primaryKey(),
   jobsiteId: text("jobsite_id").notNull().references(() => jobsites.id),
   tradeCompanyId: text("trade_company_id").notNull().references(() => tradeCompanies.id),
-  clientId: text("client_id"),
+  clientId: text("client_id").references(() => clients.id),
   scopeOfWork: text("scope_of_work"),
   startDate: text("start_date"),
   endDate: text("end_date"),

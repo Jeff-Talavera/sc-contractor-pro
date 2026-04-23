@@ -447,6 +447,8 @@ export interface IStorage {
   createTradeAssignment(jobsiteId: string, data: InsertJobsiteTradeAssignment): Promise<JobsiteTradeAssignment>;
   deleteTradeAssignment(assignmentId: string): Promise<boolean>;
   getTradeAssignmentsByTrade(tradeId: string): Promise<JobsiteTradeAssignment[]>;
+  getTradeAssignment(id: string): Promise<JobsiteTradeAssignment | undefined>;
+  getAllTradeAssignmentsByOrg(orgId: string): Promise<JobsiteTradeAssignment[]>;
 
   // ─── Contractors ──────────────────────────────────────────────────────────
   getContractorsByOrg(orgId: string): Promise<IndependentContractor[]>;
@@ -1142,6 +1144,20 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.select().from(t.jobsiteTradeAssignments)
       .where(eq(t.jobsiteTradeAssignments.tradeCompanyId, tradeId));
     return rows.map(mapTradeAssignment);
+  }
+
+  async getTradeAssignment(id: string): Promise<JobsiteTradeAssignment | undefined> {
+    const [row] = await db.select().from(t.jobsiteTradeAssignments)
+      .where(eq(t.jobsiteTradeAssignments.id, id));
+    return row ? mapTradeAssignment(row) : undefined;
+  }
+
+  async getAllTradeAssignmentsByOrg(orgId: string): Promise<JobsiteTradeAssignment[]> {
+    const rows = await db.select({ assignment: t.jobsiteTradeAssignments })
+      .from(t.jobsiteTradeAssignments)
+      .innerJoin(t.tradeCompanies, eq(t.jobsiteTradeAssignments.tradeCompanyId, t.tradeCompanies.id))
+      .where(eq(t.tradeCompanies.organizationId, orgId));
+    return rows.map(r => mapTradeAssignment(r.assignment));
   }
 
   // ─── Contractors ──────────────────────────────────────────────────────────
