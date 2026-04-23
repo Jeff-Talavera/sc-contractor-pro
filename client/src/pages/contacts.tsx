@@ -15,7 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, Mail, Phone, Building2, User, Pencil, Trash2, Link2, X } from "lucide-react";
+import { Plus, Search, Mail, Phone, Building2, Pencil, Trash2, Link2, X } from "lucide-react";
 import type { Contact, ContactWithAssociations, InsertContact } from "@shared/schema";
 import { insertContactSchema, ENTITY_TYPES } from "@shared/schema";
 
@@ -47,6 +47,10 @@ export default function ContactsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [detailContact, setDetailContact] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [addAssocOpen, setAddAssocOpen] = useState(false);
+  const [assocEntityType, setAssocEntityType] = useState<string>("");
+  const [assocEntityId, setAssocEntityId] = useState<string>("");
+  const [assocRelationship, setAssocRelationship] = useState<string>("");
 
   const { data: contacts, isLoading } = useQuery<Contact[]>({
     queryKey: ["/api/contacts"],
@@ -61,6 +65,17 @@ export default function ContactsPage() {
     queryKey: ["/api/contacts", detailContact],
     enabled: !!detailContact,
   });
+
+  const { data: jobsites = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ["/api/jobsites"] });
+  const { data: clients = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ["/api/clients"] });
+  const { data: tradeCompanies = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ["/api/trade-companies"] });
+  const { data: contractors = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ["/api/contractors"] });
+
+  const entityOptions: { id: string; name: string }[] =
+    assocEntityType === "jobsite" ? jobsites :
+    assocEntityType === "client" ? clients :
+    assocEntityType === "trade_company" ? tradeCompanies :
+    assocEntityType === "contractor" ? contractors : [];
 
   const addForm = useForm<InsertContact>({
     resolver: zodResolver(insertContactSchema),
@@ -104,6 +119,7 @@ export default function ContactsPage() {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/contacts/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/counts"] });
       setDetailContact(null);
       toast({ title: "Contact deleted" });
     },
@@ -114,9 +130,31 @@ export default function ContactsPage() {
     mutationFn: (assocId: string) => apiRequest("DELETE", `/api/contact-associations/${assocId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", detailContact] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/counts"] });
       toast({ title: "Association removed" });
     },
     onError: () => toast({ title: "Error", description: "Failed to remove association", variant: "destructive" }),
+  });
+
+  const addAssocMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/contacts/${detailContact}/associations`, {
+        entityType: assocEntityType,
+        entityId: assocEntityId,
+        relationship: assocRelationship || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", detailContact] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/counts"] });
+      setAddAssocOpen(false);
+      setAssocEntityType("");
+      setAssocEntityId("");
+      setAssocRelationship("");
+      toast({ title: "Association added" });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to add association", variant: "destructive" }),
   });
 
   const filtered = (contacts ?? []).filter(c => {
@@ -325,7 +363,7 @@ export default function ContactsPage() {
       </Dialog>
 
       {/* Contact Detail Sheet */}
-      <Sheet open={!!detailContact} onOpenChange={open => { if (!open) setDetailContact(null); }}>
+      <Sheet open={!!detailContact} onOpenChange={open => { if (!open) { setDetailContact(null); setAddAssocOpen(false); setAssocEntityType(""); setAssocEntityId(""); setAssocRelationship(""); } }}>
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           {detailLoading ? (
             <div className="space-y-4 pt-4">
@@ -386,12 +424,70 @@ export default function ContactsPage() {
                 )}
               </div>
 
-              {detailData.associations.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
                     <Link2 className="h-4 w-4 text-muted-foreground" />
                     Linked To ({detailData.associations.length})
                   </h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setAddAssocOpen(v => !v); setAssocEntityType(""); setAssocEntityId(""); setAssocRelationship(""); }}
+                    data-testid="button-add-assoc"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Link to Entity
+                  </Button>
+                </div>
+
+                {addAssocOpen && (
+                  <div className="mb-3 space-y-2 border rounded p-3 bg-muted/20">
+                    <Select value={assocEntityType} onValueChange={v => { setAssocEntityType(v); setAssocEntityId(""); }}>
+                      <SelectTrigger data-testid="select-assoc-entity-type">
+                        <SelectValue placeholder="Entity type…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="jobsite">Jobsite</SelectItem>
+                        <SelectItem value="client">Client</SelectItem>
+                        <SelectItem value="trade_company">Trade Company</SelectItem>
+                        <SelectItem value="contractor">Contractor</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {assocEntityType && (
+                      <Select value={assocEntityId} onValueChange={setAssocEntityId}>
+                        <SelectTrigger data-testid="select-assoc-entity-id">
+                          <SelectValue placeholder="Select entity…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {entityOptions.length === 0 ? (
+                            <SelectItem value="_none" disabled>No entities found</SelectItem>
+                          ) : entityOptions.map(e => (
+                            <SelectItem key={e.id} value={e.id} data-testid={`option-entity-${e.id}`}>{e.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    <Input
+                      value={assocRelationship}
+                      onChange={e => setAssocRelationship(e.target.value)}
+                      placeholder="Relationship label (optional)"
+                      data-testid="input-assoc-relationship"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <Button variant="outline" size="sm" onClick={() => setAddAssocOpen(false)}>Cancel</Button>
+                      <Button
+                        size="sm"
+                        disabled={!assocEntityType || !assocEntityId || assocEntityId === "_none" || addAssocMutation.isPending}
+                        onClick={() => addAssocMutation.mutate()}
+                        data-testid="button-save-assoc"
+                      >
+                        {addAssocMutation.isPending ? "Linking…" : "Link"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {detailData.associations.length > 0 ? (
                   <div className="space-y-2">
                     {detailData.associations.map(a => (
                       <div
@@ -417,8 +513,10 @@ export default function ContactsPage() {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-xs text-muted-foreground py-2">No associations yet.</p>
+                )}
+              </div>
             </div>
           ) : null}
         </SheetContent>

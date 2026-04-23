@@ -70,6 +70,7 @@ export function ContactsCard({ entityType, entityId, title = "Contacts" }: Conta
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qKey });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/counts"] });
       setAddOpen(false);
       form.reset();
       toast({ title: "Contact added" });
@@ -87,6 +88,7 @@ export function ContactsCard({ entityType, entityId, title = "Contacts" }: Conta
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qKey });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/counts"] });
       setLinkOpen(false);
       setSelectedLinkId("");
       setLinkRelationship("");
@@ -100,6 +102,7 @@ export function ContactsCard({ entityType, entityId, title = "Contacts" }: Conta
       apiRequest("DELETE", `/api/contact-associations/${assocId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qKey });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/counts"] });
       toast({ title: "Contact removed" });
     },
     onError: () => toast({ title: "Error", description: "Failed to remove contact", variant: "destructive" }),
