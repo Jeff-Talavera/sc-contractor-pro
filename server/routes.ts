@@ -6,7 +6,8 @@ import {
   insertClientSchema, insertJobsiteSchema, insertInspectionSchema, insertObservationSchema,
   insertEmployeeProfileSchema, insertScheduleEntrySchema, insertTimesheetSchema, insertTimesheetEntrySchema,
   updateInspectionReportSchema, insertSafetyReportSchema, updateSafetySettingsSchema, updateOrganizationSchema,
-  insertIndependentContractorSchema, insertContractorAssignmentSchema
+  insertIndependentContractorSchema, insertContractorAssignmentSchema,
+  insertTradeCompanySchema, insertJobsiteTradeAssignmentSchema
 } from "@shared/schema";
 import type { AiFinding, User, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
@@ -666,6 +667,87 @@ export async function registerRoutes(
   });
 
   // ─── Contractors ────────────────────────────────────────────────────────────
+
+  // ─── Trade Companies ──────────────────────────────────────────────────────
+
+  app.get("/api/trades", async (req, res) => {
+    const trades = await storage.getTradesByOrg(req.user!.organizationId);
+    res.json(trades);
+  });
+
+  app.get("/api/trades/:id", async (req, res) => {
+    const trade = await storage.getTrade(req.params.id);
+    if (!trade) return res.status(404).json({ message: "Trade company not found" });
+    if (trade.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    res.json(trade);
+  });
+
+  app.post("/api/trades", async (req, res) => {
+    const parsed = insertTradeCompanySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const trade = await storage.createTrade(req.user!.organizationId, parsed.data);
+    res.status(201).json(trade);
+  });
+
+  app.patch("/api/trades/:id", async (req, res) => {
+    const trade = await storage.getTrade(req.params.id);
+    if (!trade) return res.status(404).json({ message: "Trade company not found" });
+    if (trade.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    const parsed = insertTradeCompanySchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const updated = await storage.updateTrade(req.params.id, parsed.data);
+    res.json(updated);
+  });
+
+  app.delete("/api/trades/:id", async (req, res) => {
+    const trade = await storage.getTrade(req.params.id);
+    if (!trade) return res.status(404).json({ message: "Trade company not found" });
+    if (trade.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteTrade(req.params.id);
+    res.status(204).end();
+  });
+
+  app.get("/api/trades/:id/assignments", async (req, res) => {
+    const trade = await storage.getTrade(req.params.id);
+    if (!trade) return res.status(404).json({ message: "Trade company not found" });
+    if (trade.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    res.json(await storage.getTradeAssignmentsByTrade(req.params.id));
+  });
+
+  app.post("/api/trades/:id/assign", async (req, res) => {
+    const trade = await storage.getTrade(req.params.id);
+    if (!trade) return res.status(404).json({ message: "Trade company not found" });
+    if (trade.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    const { jobsiteId, clientId, scopeOfWork, startDate, endDate } = req.body as {
+      jobsiteId?: string; clientId?: string; scopeOfWork?: string; startDate?: string; endDate?: string;
+    };
+    if (!jobsiteId) return res.status(400).json({ message: "jobsiteId is required" });
+    const jobsiteRecord = await storage.getJobsite(jobsiteId);
+    if (!jobsiteRecord) return res.status(404).json({ message: "Jobsite not found" });
+    if (jobsiteRecord.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    const existing = await storage.getTradeAssignmentsByTrade(req.params.id);
+    if (existing.some(a => a.jobsiteId === jobsiteId)) {
+      return res.status(409).json({ message: "Trade company is already assigned to this jobsite" });
+    }
+    const assignment = await storage.createTradeAssignment(jobsiteId, {
+      tradeCompanyId: req.params.id, clientId, scopeOfWork, startDate, endDate,
+    });
+    res.status(201).json(assignment);
+  });
+
+  app.get("/api/jobsites/:id/trades", async (req, res) => {
+    const jobsite = await storage.getJobsite(req.params.id);
+    if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+    if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    res.json(await storage.getTradesByJobsite(req.params.id));
+  });
+
+  app.delete("/api/jobsite-trade-assignments/:id", async (req, res) => {
+    await storage.deleteTradeAssignment(req.params.id);
+    res.status(204).end();
+  });
+
+  // ─── Contractors ──────────────────────────────────────────────────────────
 
   app.get("/api/contractors", async (req, res) => {
     res.json(await storage.getContractorsByOrg(req.user!.organizationId));

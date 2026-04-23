@@ -13,6 +13,7 @@ import InspectionsPage from "@/pages/inspections";
 import CodeLibraryPage from "@/pages/code-library";
 import WorkforcePage from "@/pages/workforce";
 import ContractorsPage from "@/pages/contractors";
+import TradesPage from "@/pages/trades";
 import SafetyRatingsPage from "@/pages/safety-ratings";
 import SettingsPage from "@/pages/settings";
 import LoginPage from "@/pages/login";
@@ -179,6 +180,7 @@ function AppShell() {
               <Route path="/workforce/:id" component={WorkforcePage} />
               <Route path="/contractors" component={ContractorsPage} />
               <Route path="/contractors/:id" component={ContractorsPage} />
+              <Route path="/trades" component={TradesPage} />
               <Route path="/safety-ratings" component={SafetyRatingsPage} />
               <Route path="/safety-ratings/:clientId" component={SafetyRatingsPage} />
               <Route path="/settings" component={SettingsPage} />

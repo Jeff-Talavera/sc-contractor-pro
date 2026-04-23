@@ -32,6 +32,7 @@ const navItems = [
   { title: "Code Library", url: "/code-library", icon: BookOpen },
   { title: "Workforce", url: "/workforce", icon: UserCog },
   { title: "Contractors", url: "/contractors", icon: UserCheck },
+  { title: "Trades", url: "/trades", icon: HardHat },
   { title: "Safety Ratings", url: "/safety-ratings", icon: Shield },
   { title: "Settings", url: "/settings", icon: Settings },
 ];

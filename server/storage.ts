@@ -5,11 +5,13 @@ import type {
   EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry,
   SafetyReport, SafetyReportSettings,
   IndependentContractor, ContractorJobsiteAssignment,
+  TradeCompany, JobsiteTradeAssignment,
   InsertClient, InsertJobsite, InsertInspection, InsertObservation,
   InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry,
   InsertSafetyReport, UpdateSafetySettings, UpdateOrganization,
   UpdateInspectionReport,
-  InsertIndependentContractor, InsertContractorAssignment
+  InsertIndependentContractor, InsertContractorAssignment,
+  InsertTradeCompany, InsertJobsiteTradeAssignment
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
@@ -168,6 +170,29 @@ function mapContractorAssignment(row: typeof t.contractorJobsiteAssignments.$inf
     id: row.id, contractorId: row.contractorId, jobsiteId: row.jobsiteId,
     startDate: row.startDate ?? undefined, endDate: row.endDate ?? undefined,
     role: row.role ?? undefined,
+  };
+}
+
+function mapTradeCompany(row: typeof t.tradeCompanies.$inferSelect): TradeCompany {
+  return {
+    id: row.id, organizationId: row.organizationId,
+    name: row.name, tradeType: row.tradeType,
+    contactName: row.contactName ?? undefined, contactEmail: row.contactEmail ?? undefined,
+    contactPhone: row.contactPhone ?? undefined, licenseNumber: row.licenseNumber ?? undefined,
+    coiCarrier: row.coiCarrier ?? undefined, coiPolicyNumber: row.coiPolicyNumber ?? undefined,
+    coiExpiryDate: row.coiExpiryDate ?? undefined,
+    wcCarrier: row.wcCarrier ?? undefined, wcPolicyNumber: row.wcPolicyNumber ?? undefined,
+    wcExpiryDate: row.wcExpiryDate ?? undefined,
+    status: (row.status as TradeCompany["status"]) ?? "active",
+    notes: row.notes ?? undefined,
+  };
+}
+
+function mapTradeAssignment(row: typeof t.jobsiteTradeAssignments.$inferSelect): JobsiteTradeAssignment {
+  return {
+    id: row.id, jobsiteId: row.jobsiteId, tradeCompanyId: row.tradeCompanyId,
+    clientId: row.clientId ?? undefined, scopeOfWork: row.scopeOfWork ?? undefined,
+    startDate: row.startDate ?? undefined, endDate: row.endDate ?? undefined,
   };
 }
 
@@ -411,6 +436,17 @@ export interface IStorage {
 
   getSafetySettings(orgId: string): Promise<SafetyReportSettings>;
   updateSafetySettings(orgId: string, data: UpdateSafetySettings): Promise<SafetyReportSettings>;
+
+  // ─── Trades ───────────────────────────────────────────────────────────────
+  getTradesByOrg(orgId: string): Promise<TradeCompany[]>;
+  getTradesByJobsite(jobsiteId: string): Promise<JobsiteTradeAssignment[]>;
+  getTrade(id: string): Promise<TradeCompany | undefined>;
+  createTrade(orgId: string, data: InsertTradeCompany): Promise<TradeCompany>;
+  updateTrade(id: string, updates: Partial<TradeCompany>): Promise<TradeCompany | undefined>;
+  deleteTrade(id: string): Promise<boolean>;
+  createTradeAssignment(jobsiteId: string, data: InsertJobsiteTradeAssignment): Promise<JobsiteTradeAssignment>;
+  deleteTradeAssignment(assignmentId: string): Promise<boolean>;
+  getTradeAssignmentsByTrade(tradeId: string): Promise<JobsiteTradeAssignment[]>;
 
   // ─── Contractors ──────────────────────────────────────────────────────────
   getContractorsByOrg(orgId: string): Promise<IndependentContractor[]>;
@@ -1049,6 +1085,63 @@ export class DatabaseStorage implements IStorage {
       .where(eq(t.inspections.organizationId, orgId))
       .orderBy(desc(t.inspections.date));
     return rows.map(mapInspection);
+  }
+
+  // ─── Trades ───────────────────────────────────────────────────────────────
+
+  async getTradesByOrg(orgId: string): Promise<TradeCompany[]> {
+    const rows = await db.select().from(t.tradeCompanies)
+      .where(eq(t.tradeCompanies.organizationId, orgId));
+    return rows.map(mapTradeCompany);
+  }
+
+  async getTradesByJobsite(jobsiteId: string): Promise<JobsiteTradeAssignment[]> {
+    const rows = await db.select().from(t.jobsiteTradeAssignments)
+      .where(eq(t.jobsiteTradeAssignments.jobsiteId, jobsiteId));
+    return rows.map(mapTradeAssignment);
+  }
+
+  async getTrade(id: string): Promise<TradeCompany | undefined> {
+    const [row] = await db.select().from(t.tradeCompanies).where(eq(t.tradeCompanies.id, id));
+    return row ? mapTradeCompany(row) : undefined;
+  }
+
+  async createTrade(orgId: string, data: InsertTradeCompany): Promise<TradeCompany> {
+    const id = randomUUID();
+    const [row] = await db.insert(t.tradeCompanies).values({ id, organizationId: orgId, ...data }).returning();
+    return mapTradeCompany(row);
+  }
+
+  async updateTrade(id: string, updates: Partial<typeof t.tradeCompanies.$inferInsert>): Promise<TradeCompany | undefined> {
+    const [row] = await db.update(t.tradeCompanies).set(updates).where(eq(t.tradeCompanies.id, id)).returning();
+    return row ? mapTradeCompany(row) : undefined;
+  }
+
+  async deleteTrade(id: string): Promise<boolean> {
+    await db.delete(t.jobsiteTradeAssignments).where(eq(t.jobsiteTradeAssignments.tradeCompanyId, id));
+    const result = await db.delete(t.tradeCompanies).where(eq(t.tradeCompanies.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async createTradeAssignment(jobsiteId: string, data: InsertJobsiteTradeAssignment): Promise<JobsiteTradeAssignment> {
+    const id = randomUUID();
+    const [row] = await db.insert(t.jobsiteTradeAssignments)
+      .values({ id, jobsiteId, ...data })
+      .returning();
+    return mapTradeAssignment(row);
+  }
+
+  async deleteTradeAssignment(assignmentId: string): Promise<boolean> {
+    const result = await db.delete(t.jobsiteTradeAssignments)
+      .where(eq(t.jobsiteTradeAssignments.id, assignmentId))
+      .returning();
+    return result.length > 0;
+  }
+
+  async getTradeAssignmentsByTrade(tradeId: string): Promise<JobsiteTradeAssignment[]> {
+    const rows = await db.select().from(t.jobsiteTradeAssignments)
+      .where(eq(t.jobsiteTradeAssignments.tradeCompanyId, tradeId));
+    return rows.map(mapTradeAssignment);
   }
 
   // ─── Contractors ──────────────────────────────────────────────────────────

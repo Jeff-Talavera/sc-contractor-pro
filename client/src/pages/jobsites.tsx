@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation, Link } from "wouter";
-import type { Client, Jobsite, Inspection, InspectionTemplate, User, JobsitePermit, JobsiteExternalEvent, IndependentContractor, ContractorJobsiteAssignment } from "@shared/schema";
+import type { Client, Jobsite, Inspection, InspectionTemplate, User, JobsitePermit, JobsiteExternalEvent, IndependentContractor, ContractorJobsiteAssignment, TradeCompany, JobsiteTradeAssignment } from "@shared/schema";
 import { insertJobsiteSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -329,6 +329,61 @@ function JobsiteContractorsTab({ jobsiteId }: { jobsiteId: string }) {
             <div className="flex flex-wrap gap-1.5">
               <InsurancePill label="PL" expiryDate={c.plExpiryDate} />
               <InsurancePill label="GL" expiryDate={c.glExpiryDate} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function JobsiteTradesTab({ jobsiteId }: { jobsiteId: string }) {
+  const { data: assignments, isLoading } = useQuery<JobsiteTradeAssignment[]>({
+    queryKey: ["/api/jobsites", jobsiteId, "trades"],
+  });
+  const { data: allTrades } = useQuery<TradeCompany[]>({ queryKey: ["/api/trades"] });
+  const tradeMap = new Map(allTrades?.map(t => [t.id, t]) ?? []);
+
+  if (isLoading) {
+    return <div className="space-y-2"><div className="h-10 bg-muted rounded animate-pulse" /><div className="h-10 bg-muted rounded animate-pulse" /></div>;
+  }
+
+  if (!assignments || assignments.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <HardHat className="h-10 w-10 mx-auto mb-2 opacity-30" />
+        <p className="text-sm">No trade companies assigned to this jobsite</p>
+        <p className="text-xs mt-1">Assign from the <Link href="/trades"><span className="underline cursor-pointer">Trades</span></Link> page</p>
+      </div>
+    );
+  }
+
+  function tradeBadge(dateStr?: string, label?: string) {
+    if (!dateStr) return <Badge variant="outline" className="text-xs">{label} None</Badge>;
+    const expiry = new Date(dateStr);
+    const now = new Date();
+    const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / 86400000);
+    if (daysLeft < 0) return <Badge className="text-xs bg-red-100 text-red-700 border-red-200">{label} Expired</Badge>;
+    if (daysLeft <= 30) return <Badge className="text-xs bg-amber-100 text-amber-700 border-amber-200">{label} &lt;30d</Badge>;
+    return <Badge className="text-xs bg-green-100 text-green-700 border-green-200">{label} Valid</Badge>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {assignments.map(a => {
+        const tc = tradeMap.get(a.tradeCompanyId);
+        if (!tc) return null;
+        return (
+          <div key={a.id} className="flex items-center justify-between gap-4 p-3 border rounded-lg" data-testid={`card-jobsite-trade-${a.tradeCompanyId}`}>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm">{tc.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {tc.tradeType}{a.scopeOfWork ? ` · ${a.scopeOfWork}` : ""}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {tradeBadge(tc.coiExpiryDate, "COI")}
+              {tradeBadge(tc.wcExpiryDate, "WC")}
             </div>
           </div>
         );
@@ -782,6 +837,17 @@ function JobsiteDetail({ id }: { id: string }) {
             </CardHeader>
             <CardContent>
               <JobsiteContractorsTab jobsiteId={id} />
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-jobsite-trades">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <HardHat className="h-4 w-4" /> Trades & Subcontractors
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <JobsiteTradesTab jobsiteId={id} />
             </CardContent>
           </Card>
 

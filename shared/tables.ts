@@ -281,3 +281,32 @@ export const contractorJobsiteAssignments = pgTable("contractor_jobsite_assignme
   endDate: text("end_date"),
   role: text("role"),
 });
+
+export const tradeCompanies = pgTable("trade_companies", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  name: text("name").notNull(),
+  tradeType: text("trade_type").notNull(),
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  licenseNumber: text("license_number"),
+  coiCarrier: text("coi_carrier"),
+  coiPolicyNumber: text("coi_policy_number"),
+  coiExpiryDate: text("coi_expiry_date"),
+  wcCarrier: text("wc_carrier"),
+  wcPolicyNumber: text("wc_policy_number"),
+  wcExpiryDate: text("wc_expiry_date"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+});
+
+export const jobsiteTradeAssignments = pgTable("jobsite_trade_assignments", {
+  id: text("id").primaryKey(),
+  jobsiteId: text("jobsite_id").notNull().references(() => jobsites.id),
+  tradeCompanyId: text("trade_company_id").notNull().references(() => tradeCompanies.id),
+  clientId: text("client_id"),
+  scopeOfWork: text("scope_of_work"),
+  startDate: text("start_date"),
+  endDate: text("end_date"),
+});

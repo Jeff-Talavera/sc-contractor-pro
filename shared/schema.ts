@@ -434,6 +434,60 @@ export const insertSafetyReportSchema = z.object({
   photos: z.array(z.string()).max(10).default([]),
 });
 
+export interface TradeCompany {
+  id: string;
+  organizationId: string;
+  name: string;
+  tradeType: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  licenseNumber?: string;
+  coiCarrier?: string;
+  coiPolicyNumber?: string;
+  coiExpiryDate?: string;
+  wcCarrier?: string;
+  wcPolicyNumber?: string;
+  wcExpiryDate?: string;
+  status: "active" | "inactive";
+  notes?: string;
+}
+
+export interface JobsiteTradeAssignment {
+  id: string;
+  jobsiteId: string;
+  tradeCompanyId: string;
+  clientId?: string;
+  scopeOfWork?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export const insertTradeCompanySchema = z.object({
+  name: z.string().min(1, "Company name is required"),
+  tradeType: z.string().min(1, "Trade type is required"),
+  contactName: z.string().optional(),
+  contactEmail: z.string().email("Valid email required").optional().or(z.literal("")),
+  contactPhone: z.string().optional(),
+  licenseNumber: z.string().optional(),
+  coiCarrier: z.string().optional(),
+  coiPolicyNumber: z.string().optional(),
+  coiExpiryDate: z.string().optional(),
+  wcCarrier: z.string().optional(),
+  wcPolicyNumber: z.string().optional(),
+  wcExpiryDate: z.string().optional(),
+  status: z.enum(["active", "inactive"]).default("active"),
+  notes: z.string().optional(),
+});
+
+export const insertJobsiteTradeAssignmentSchema = z.object({
+  tradeCompanyId: z.string().min(1, "Trade company is required"),
+  clientId: z.string().optional(),
+  scopeOfWork: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+});
+
 export const insertIndependentContractorSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Valid email required").optional().or(z.literal("")),
@@ -490,3 +544,5 @@ export type UpdateSafetySettings = z.infer<typeof updateSafetySettingsSchema>;
 export type UpdateOrganization = z.infer<typeof updateOrganizationSchema>;
 export type InsertIndependentContractor = z.infer<typeof insertIndependentContractorSchema>;
 export type InsertContractorAssignment = z.infer<typeof insertContractorAssignmentSchema>;
+export type InsertTradeCompany = z.infer<typeof insertTradeCompanySchema>;
+export type InsertJobsiteTradeAssignment = z.infer<typeof insertJobsiteTradeAssignmentSchema>;
