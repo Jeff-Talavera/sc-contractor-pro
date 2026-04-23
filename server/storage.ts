@@ -466,7 +466,9 @@ export interface IStorage {
 
   // ─── Contacts ─────────────────────────────────────────────────────────────
   getContactsByOrg(orgId: string): Promise<Contact[]>;
-  getContactsByEntity(entityType: string, entityId: string): Promise<ContactWithAssociations[]>;
+  getContactsByEntity(entityType: string, entityId: string, orgId: string): Promise<ContactWithAssociations[]>;
+  getContactAssociationCountsByOrg(orgId: string): Promise<Record<string, { count: number; entityTypes: string[] }>>;
+  getEntityOrgId(entityType: string, entityId: string): Promise<string | undefined>;
   getContact(id: string): Promise<Contact | undefined>;
   getContactWithAssociations(id: string): Promise<ContactWithAssociations | undefined>;
   createContact(orgId: string, data: InsertContact): Promise<Contact>;
@@ -1294,22 +1296,55 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(t.contacts).where(eq(t.contacts.organizationId, orgId));
   }
 
-  async getContactsByEntity(entityType: string, entityId: string): Promise<ContactWithAssociations[]> {
+  async getContactsByEntity(entityType: string, entityId: string, orgId: string): Promise<ContactWithAssociations[]> {
     const assocs = await db.select().from(t.contactAssociations)
       .where(and(eq(t.contactAssociations.entityType, entityType), eq(t.contactAssociations.entityId, entityId)));
     if (assocs.length === 0) return [];
     const contactIds = [...new Set(assocs.map(a => a.contactId))];
     const allContacts: Contact[] = [];
     for (const cid of contactIds) {
-      const rows = await db.select().from(t.contacts).where(eq(t.contacts.id, cid));
+      const rows = await db.select().from(t.contacts)
+        .where(and(eq(t.contacts.id, cid), eq(t.contacts.organizationId, orgId)));
       if (rows[0]) allContacts.push(rows[0]);
     }
-    const allAssocs = await db.select().from(t.contactAssociations)
-      .where(eq(t.contactAssociations.entityType, entityType));
     return allContacts.map(c => ({
       ...c,
-      associations: allAssocs.filter(a => a.contactId === c.id),
+      associations: assocs.filter(a => a.contactId === c.id),
     }));
+  }
+
+  async getContactAssociationCountsByOrg(orgId: string): Promise<Record<string, { count: number; entityTypes: string[] }>> {
+    const contacts = await this.getContactsByOrg(orgId);
+    const result: Record<string, { count: number; entityTypes: string[] }> = {};
+    for (const c of contacts) {
+      const rows = await db.select().from(t.contactAssociations)
+        .where(eq(t.contactAssociations.contactId, c.id));
+      result[c.id] = {
+        count: rows.length,
+        entityTypes: [...new Set(rows.map(r => r.entityType))],
+      };
+    }
+    return result;
+  }
+
+  async getEntityOrgId(entityType: string, entityId: string): Promise<string | undefined> {
+    if (entityType === "jobsite") {
+      const rows = await db.select().from(t.jobsites).where(eq(t.jobsites.id, entityId));
+      return rows[0]?.organizationId;
+    }
+    if (entityType === "client") {
+      const rows = await db.select().from(t.clients).where(eq(t.clients.id, entityId));
+      return rows[0]?.organizationId;
+    }
+    if (entityType === "trade_company") {
+      const rows = await db.select().from(t.tradeCompanies).where(eq(t.tradeCompanies.id, entityId));
+      return rows[0]?.organizationId;
+    }
+    if (entityType === "contractor") {
+      const rows = await db.select().from(t.independentContractors).where(eq(t.independentContractors.id, entityId));
+      return rows[0]?.organizationId;
+    }
+    return undefined;
   }
 
   async getContact(id: string): Promise<Contact | undefined> {

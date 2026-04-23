@@ -52,6 +52,11 @@ export default function ContactsPage() {
     queryKey: ["/api/contacts"],
   });
 
+  const { data: counts } = useQuery<Record<string, { count: number; entityTypes: string[] }>>({
+    queryKey: ["/api/contacts/counts"],
+    queryFn: () => fetch("/api/contacts/counts").then(r => r.json()),
+  });
+
   const { data: detailData, isLoading: detailLoading } = useQuery<ContactWithAssociations>({
     queryKey: ["/api/contacts", detailContact],
     enabled: !!detailContact,
@@ -121,7 +126,10 @@ export default function ContactsPage() {
       (c.email ?? "").toLowerCase().includes(q) ||
       (c.company ?? "").toLowerCase().includes(q) ||
       (c.title ?? "").toLowerCase().includes(q);
-    return matchesSearch;
+    const matchesEntityFilter =
+      filterEntity === "all" ||
+      (counts?.[c.id]?.entityTypes ?? []).includes(filterEntity);
+    return matchesSearch && matchesEntityFilter;
   });
 
   function openEdit(contact: ContactWithAssociations) {
@@ -159,6 +167,18 @@ export default function ContactsPage() {
             data-testid="input-contacts-search"
           />
         </div>
+        <Select value={filterEntity} onValueChange={setFilterEntity}>
+          <SelectTrigger className="w-[180px]" data-testid="select-filter-entity">
+            <SelectValue placeholder="Filter by entity type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All entities</SelectItem>
+            <SelectItem value="jobsite">Jobsites</SelectItem>
+            <SelectItem value="client">Clients</SelectItem>
+            <SelectItem value="trade_company">Trade Companies</SelectItem>
+            <SelectItem value="contractor">Contractors</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <Card>
@@ -179,6 +199,7 @@ export default function ContactsPage() {
                   <TableHead>Title / Company</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Phone</TableHead>
+                  <TableHead># Associations</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -212,6 +233,14 @@ export default function ContactsPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{c.phone}</TableCell>
+                    <TableCell data-testid={`text-assoc-count-${c.id}`}>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className="text-sm font-medium">{counts?.[c.id]?.count ?? 0}</span>
+                        {(counts?.[c.id]?.entityTypes ?? []).map(et => (
+                          <AssociationBadge key={et} entityType={et} />
+                        ))}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button
                         variant="ghost"

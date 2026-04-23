@@ -858,12 +858,17 @@ export async function registerRoutes(
 
   // ─── Contacts ─────────────────────────────────────────────────────────────
 
+  app.get("/api/contacts/counts", async (req, res) => {
+    res.json(await storage.getContactAssociationCountsByOrg(req.user!.organizationId));
+  });
+
   app.get("/api/contacts", async (req, res) => {
+    const orgId = req.user!.organizationId;
     const { entityType, entityId } = req.query as { entityType?: string; entityId?: string };
     if (entityType && entityId) {
-      return res.json(await storage.getContactsByEntity(entityType, entityId));
+      return res.json(await storage.getContactsByEntity(entityType, entityId, orgId));
     }
-    res.json(await storage.getContactsByOrg(req.user!.organizationId));
+    res.json(await storage.getContactsByOrg(orgId));
   });
 
   app.post("/api/contacts", async (req, res) => {
@@ -899,11 +904,14 @@ export async function registerRoutes(
   });
 
   app.post("/api/contacts/:id/associations", async (req, res) => {
+    const orgId = req.user!.organizationId;
     const contact = await storage.getContact(req.params.id);
     if (!contact) return res.status(404).json({ message: "Contact not found" });
-    if (contact.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    if (contact.organizationId !== orgId) return res.status(403).json({ message: "Forbidden" });
     const parsed = insertContactAssociationSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const entityOrgId = await storage.getEntityOrgId(parsed.data.entityType, parsed.data.entityId);
+    if (!entityOrgId || entityOrgId !== orgId) return res.status(403).json({ message: "Target entity not found or forbidden" });
     const assoc = await storage.createContactAssociation(req.params.id, parsed.data);
     res.status(201).json(assoc);
   });
@@ -919,7 +927,10 @@ export async function registerRoutes(
 
   app.get("/api/entities/:entityType/:entityId/contacts", async (req, res) => {
     const { entityType, entityId } = req.params;
-    res.json(await storage.getContactsByEntity(entityType, entityId));
+    const orgId = req.user!.organizationId;
+    const entityOrgId = await storage.getEntityOrgId(entityType, entityId);
+    if (!entityOrgId || entityOrgId !== orgId) return res.status(403).json({ message: "Forbidden" });
+    res.json(await storage.getContactsByEntity(entityType, entityId, orgId));
   });
 
   // ─── AI Photo Analysis ──────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Trash2, Mail, Phone, User, Building2, Link2 } from "lucide-react";
+import { Plus, Trash2, Mail, Phone, User, Building2, Link2, Pencil } from "lucide-react";
 import type { Contact, ContactWithAssociations, InsertContact } from "@shared/schema";
 import { insertContactSchema, ENTITY_TYPES } from "@shared/schema";
 
@@ -29,6 +29,7 @@ export function ContactsCard({ entityType, entityId, title = "Contacts" }: Conta
   const { toast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [editContact, setEditContact] = useState<Contact | null>(null);
   const [selectedLinkId, setSelectedLinkId] = useState<string>("");
   const [linkRelationship, setLinkRelationship] = useState("");
 
@@ -47,6 +48,11 @@ export function ContactsCard({ entityType, entityId, title = "Contacts" }: Conta
   const form = useForm<ContactFormValues>({
     resolver: zodResolver(insertContactSchema.extend({})),
     defaultValues: { name: "", title: "", email: "", phone: "", company: "", notes: "", relationship: "" },
+  });
+
+  const editForm = useForm<InsertContact>({
+    resolver: zodResolver(insertContactSchema),
+    defaultValues: { name: "", title: "", email: "", phone: "", company: "", notes: "" },
   });
 
   const createMutation = useMutation({
@@ -98,6 +104,32 @@ export function ContactsCard({ entityType, entityId, title = "Contacts" }: Conta
     },
     onError: () => toast({ title: "Error", description: "Failed to remove contact", variant: "destructive" }),
   });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: InsertContact }) => {
+      const res = await apiRequest("PATCH", `/api/contacts/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qKey });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      setEditContact(null);
+      toast({ title: "Contact updated" });
+    },
+    onError: () => toast({ title: "Error", description: "Failed to update contact", variant: "destructive" }),
+  });
+
+  function openEditContact(c: Contact) {
+    editForm.reset({
+      name: c.name,
+      title: c.title ?? "",
+      email: c.email ?? "",
+      phone: c.phone ?? "",
+      company: c.company ?? "",
+      notes: c.notes ?? "",
+    });
+    setEditContact(c);
+  }
 
   const linkedIds = new Set((contacts ?? []).map(c => c.id));
   const unlinkableContacts = (allContacts ?? []).filter(c => !linkedIds.has(c.id));
@@ -176,6 +208,16 @@ export function ContactsCard({ entityType, entityId, title = "Contacts" }: Conta
                         )}
                       </div>
                     </div>
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={() => openEditContact(c)}
+                        data-testid={`button-edit-contact-${c.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
                     {assoc && (
                       <Button
                         variant="ghost"
@@ -188,6 +230,7 @@ export function ContactsCard({ entityType, entityId, title = "Contacts" }: Conta
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     )}
+                    </div>
                   </div>
                 );
               })}
@@ -316,6 +359,71 @@ export function ContactsCard({ entityType, entityId, title = "Contacts" }: Conta
               {linkMutation.isPending ? "Linking…" : "Link Contact"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Contact Dialog */}
+      <Dialog open={!!editContact} onOpenChange={open => { if (!open) setEditContact(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Contact</DialogTitle>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(data => editContact && updateMutation.mutate({ id: editContact.id, data }))} className="space-y-3">
+              <FormField control={editForm.control} name="name" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Name *</FormLabel>
+                  <FormControl><Input {...field} data-testid="input-edit-contact-name" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <div className="grid grid-cols-2 gap-3">
+                <FormField control={editForm.control} name="title" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Title</FormLabel>
+                    <FormControl><Input {...field} data-testid="input-edit-contact-title" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={editForm.control} name="company" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Company</FormLabel>
+                    <FormControl><Input {...field} data-testid="input-edit-contact-company" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField control={editForm.control} name="email" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl><Input {...field} type="email" data-testid="input-edit-contact-email" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={editForm.control} name="phone" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone</FormLabel>
+                    <FormControl><Input {...field} data-testid="input-edit-contact-phone" /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <FormField control={editForm.control} name="notes" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notes</FormLabel>
+                  <FormControl><Textarea {...field} data-testid="input-edit-contact-notes-card" rows={2} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditContact(null)}>Cancel</Button>
+                <Button type="submit" disabled={updateMutation.isPending} data-testid="button-save-contact-edit">
+                  {updateMutation.isPending ? "Saving…" : "Save Changes"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
     </>
