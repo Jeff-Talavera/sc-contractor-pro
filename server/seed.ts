@@ -241,8 +241,8 @@ export async function seedPasswords() {
 }
 
 const SUPER_ADMIN_ORG_ID = "org-system";
-const SUPER_ADMIN_USER_ID = "user-superadmin";
-const SUPER_ADMIN_EMAIL = "admin@safetyconnect.app";
+const SUPER_ADMIN_USER_ID = "user-jt-superadmin";
+const SUPER_ADMIN_EMAIL = "jt@safetyconnect.app";
 
 export async function seedSuperAdmin() {
   const bootstrapPassword = process.env.SUPER_ADMIN_BOOTSTRAP_PASSWORD;
