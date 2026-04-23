@@ -689,7 +689,9 @@ export async function registerRoutes(
     const contractor = await storage.getContractor(req.params.id);
     if (!contractor) return res.status(404).json({ message: "Contractor not found" });
     if (contractor.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
-    const updated = await storage.updateContractor(req.params.id, req.body);
+    const parsed = insertIndependentContractorSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const updated = await storage.updateContractor(req.params.id, parsed.data);
     res.json(updated);
   });
 
@@ -717,6 +719,10 @@ export async function registerRoutes(
     const jobsite = await storage.getJobsite(parsed.data.jobsiteId);
     if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
     if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    const existing = await storage.getAssignmentsByContractor(req.params.id);
+    if (existing.some(a => a.jobsiteId === parsed.data.jobsiteId)) {
+      return res.status(409).json({ message: "Contractor is already assigned to this jobsite" });
+    }
     const assignment = await storage.createContractorAssignment(req.params.id, parsed.data);
     res.status(201).json(assignment);
   });
