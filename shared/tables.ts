@@ -51,6 +51,7 @@ export const jobsites = pgTable("jobsites", {
   hasCrane: boolean("has_crane").notNull().default(false),
   hasExcavation: boolean("has_excavation").notNull().default(false),
   monitorPublicRecords: boolean("monitor_public_records").notNull().default(false),
+  primaryInspectorId: text("primary_inspector_id"),
 });
 
 export const codeReferences = pgTable("code_references", {
@@ -251,4 +252,32 @@ export const safetyReportSettings = pgTable("safety_report_settings", {
   hazardManagementWeight: integer("hazard_management_weight").notNull().default(20),
   permitPreTaskWeight: integer("permit_pre_task_weight").notNull().default(15),
   reportingCultureWeight: integer("reporting_culture_weight").notNull().default(10),
+});
+
+export const independentContractors = pgTable("independent_contractors", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  licenseType: text("license_type").notNull(),
+  licenseNumber: text("license_number"),
+  certifications: json("certifications").notNull().$type<string[]>(),
+  plCarrier: text("pl_carrier"),
+  plPolicyNumber: text("pl_policy_number"),
+  plExpiryDate: text("pl_expiry_date"),
+  glCarrier: text("gl_carrier"),
+  glPolicyNumber: text("gl_policy_number"),
+  glExpiryDate: text("gl_expiry_date"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+});
+
+export const contractorJobsiteAssignments = pgTable("contractor_jobsite_assignments", {
+  id: text("id").primaryKey(),
+  contractorId: text("contractor_id").notNull().references(() => independentContractors.id),
+  jobsiteId: text("jobsite_id").notNull().references(() => jobsites.id),
+  startDate: text("start_date"),
+  endDate: text("end_date"),
+  role: text("role"),
 });

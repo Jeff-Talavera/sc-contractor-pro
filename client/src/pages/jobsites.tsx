@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation, Link } from "wouter";
-import type { Client, Jobsite, Inspection, InspectionTemplate, User, JobsitePermit, JobsiteExternalEvent } from "@shared/schema";
+import type { Client, Jobsite, Inspection, InspectionTemplate, User, JobsitePermit, JobsiteExternalEvent, IndependentContractor, ContractorJobsiteAssignment } from "@shared/schema";
 import { insertJobsiteSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Search, Building2, ExternalLink, Plus,
   MapPin, Hash, FileText, Layers, Container,
-  Shield, HardHat, ArrowUp, AlertTriangle, Bell, BellOff,
+  Shield, HardHat, ArrowUp, AlertTriangle, Bell, BellOff, UserCheck,
 } from "lucide-react";
 
 function FlagBadge({ active, label }: { active: boolean; label: string }) {
@@ -267,6 +267,72 @@ function ComplaintsViolationsTab({ jobsiteId }: { jobsiteId: string }) {
           </Table>
         </div>
       )}
+    </div>
+  );
+}
+
+function insuranceStatus(expiryDate?: string): "valid" | "expiring" | "expired" | "none" {
+  if (!expiryDate) return "none";
+  const today = new Date();
+  const expiry = new Date(expiryDate + "T00:00:00");
+  const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return "expired";
+  if (diffDays <= 30) return "expiring";
+  return "valid";
+}
+
+function InsurancePill({ label, expiryDate }: { label: string; expiryDate?: string }) {
+  const status = insuranceStatus(expiryDate);
+  if (status === "none") return <Badge variant="outline" className="text-muted-foreground">{label} —</Badge>;
+  const colors: Record<string, string> = {
+    valid: "bg-green-500/15 text-green-700 dark:text-green-400",
+    expiring: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+    expired: "bg-destructive/15 text-destructive",
+  };
+  return <Badge variant="secondary" className={colors[status]}>{label} {expiryDate}</Badge>;
+}
+
+function JobsiteContractorsTab({ jobsiteId }: { jobsiteId: string }) {
+  const { data: assignments, isLoading } = useQuery<ContractorJobsiteAssignment[]>({
+    queryKey: ["/api/jobsites", jobsiteId, "contractors"],
+  });
+  const { data: contractors } = useQuery<IndependentContractor[]>({ queryKey: ["/api/contractors"] });
+  const contractorMap = new Map(contractors?.map(c => [c.id, c]) ?? []);
+
+  if (isLoading) {
+    return <div className="space-y-2"><div className="h-10 bg-muted rounded animate-pulse" /><div className="h-10 bg-muted rounded animate-pulse" /></div>;
+  }
+
+  if (!assignments || assignments.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <UserCheck className="h-10 w-10 mx-auto mb-2 opacity-30" />
+        <p className="text-sm">No contractors assigned to this jobsite</p>
+        <p className="text-xs mt-1">Assign from the <Link href="/contractors"><span className="underline cursor-pointer">Contractors</span></Link> page</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {assignments.map(a => {
+        const c = contractorMap.get(a.contractorId);
+        if (!c) return null;
+        return (
+          <div key={a.id} className="flex items-center justify-between gap-4 p-3 border rounded-lg" data-testid={`card-jobsite-contractor-${a.contractorId}`}>
+            <div className="min-w-0 flex-1">
+              <Link href={`/contractors/${c.id}`}>
+                <p className="font-medium text-sm hover:underline cursor-pointer">{c.name}</p>
+              </Link>
+              <p className="text-xs text-muted-foreground">{c.licenseType}{a.role ? ` · ${a.role}` : ""}</p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <InsurancePill label="PL" expiryDate={c.plExpiryDate} />
+              <InsurancePill label="GL" expiryDate={c.glExpiryDate} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -650,6 +716,12 @@ function JobsiteDetail({ id }: { id: string }) {
                     <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
                     <span>{jobsite.address}, {jobsite.city}{jobsite.state ? `, ${jobsite.state}` : ""}</span>
                   </div>
+                  {jobsite.primaryInspectorId && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <UserCheck className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span>Primary Inspector: {userMap.get(jobsite.primaryInspectorId)?.name ?? jobsite.primaryInspectorId}</span>
+                    </div>
+                  )}
                   {jobsite.bin && (
                     <div className="flex items-center gap-2 text-sm">
                       <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -699,6 +771,17 @@ function JobsiteDetail({ id }: { id: string }) {
                   )}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-jobsite-contractors">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <UserCheck className="h-4 w-4" /> 1099 Contractors
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <JobsiteContractorsTab jobsiteId={id} />
             </CardContent>
           </Card>
 

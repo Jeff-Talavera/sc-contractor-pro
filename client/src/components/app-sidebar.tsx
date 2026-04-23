@@ -7,6 +7,7 @@ import {
   BookOpen,
   HardHat,
   UserCog,
+  UserCheck,
   Shield,
   Settings,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const navItems = [
   { title: "Inspections", url: "/inspections", icon: ClipboardCheck },
   { title: "Code Library", url: "/code-library", icon: BookOpen },
   { title: "Workforce", url: "/workforce", icon: UserCog },
+  { title: "Contractors", url: "/contractors", icon: UserCheck },
   { title: "Safety Ratings", url: "/safety-ratings", icon: Shield },
   { title: "Settings", url: "/settings", icon: Settings },
 ];

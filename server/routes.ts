@@ -5,7 +5,8 @@ import bcrypt from "bcrypt";
 import {
   insertClientSchema, insertJobsiteSchema, insertInspectionSchema, insertObservationSchema,
   insertEmployeeProfileSchema, insertScheduleEntrySchema, insertTimesheetSchema, insertTimesheetEntrySchema,
-  updateInspectionReportSchema, insertSafetyReportSchema, updateSafetySettingsSchema, updateOrganizationSchema
+  updateInspectionReportSchema, insertSafetyReportSchema, updateSafetySettingsSchema, updateOrganizationSchema,
+  insertIndependentContractorSchema, insertContractorAssignmentSchema
 } from "@shared/schema";
 import type { AiFinding, User, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
@@ -662,6 +663,74 @@ export async function registerRoutes(
       storage.adminGetOrgInspections(orgId),
     ]);
     res.json({ clients, jobsites, inspections });
+  });
+
+  // ─── Contractors ────────────────────────────────────────────────────────────
+
+  app.get("/api/contractors", async (req, res) => {
+    res.json(await storage.getContractorsByOrg(req.user!.organizationId));
+  });
+
+  app.get("/api/contractors/:id", async (req, res) => {
+    const contractor = await storage.getContractor(req.params.id);
+    if (!contractor) return res.status(404).json({ message: "Contractor not found" });
+    if (contractor.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    res.json(contractor);
+  });
+
+  app.post("/api/contractors", async (req, res) => {
+    const parsed = insertIndependentContractorSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const contractor = await storage.createContractor(req.user!.organizationId, parsed.data);
+    res.status(201).json(contractor);
+  });
+
+  app.patch("/api/contractors/:id", async (req, res) => {
+    const contractor = await storage.getContractor(req.params.id);
+    if (!contractor) return res.status(404).json({ message: "Contractor not found" });
+    if (contractor.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    const updated = await storage.updateContractor(req.params.id, req.body);
+    res.json(updated);
+  });
+
+  app.delete("/api/contractors/:id", async (req, res) => {
+    const contractor = await storage.getContractor(req.params.id);
+    if (!contractor) return res.status(404).json({ message: "Contractor not found" });
+    if (contractor.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteContractor(req.params.id);
+    res.json({ success: true });
+  });
+
+  app.get("/api/contractors/:id/assignments", async (req, res) => {
+    const contractor = await storage.getContractor(req.params.id);
+    if (!contractor) return res.status(404).json({ message: "Contractor not found" });
+    if (contractor.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    res.json(await storage.getAssignmentsByContractor(req.params.id));
+  });
+
+  app.post("/api/contractors/:id/assignments", async (req, res) => {
+    const contractor = await storage.getContractor(req.params.id);
+    if (!contractor) return res.status(404).json({ message: "Contractor not found" });
+    if (contractor.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    const parsed = insertContractorAssignmentSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const assignment = await storage.createContractorAssignment(req.params.id, parsed.data);
+    res.status(201).json(assignment);
+  });
+
+  app.delete("/api/contractors/:id/assignments/:assignmentId", async (req, res) => {
+    const contractor = await storage.getContractor(req.params.id);
+    if (!contractor) return res.status(404).json({ message: "Contractor not found" });
+    if (contractor.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteContractorAssignment(req.params.assignmentId);
+    res.json({ success: true });
+  });
+
+  app.get("/api/jobsites/:id/contractors", async (req, res) => {
+    const jobsite = await storage.getJobsite(req.params.id);
+    if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+    if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+    res.json(await storage.getAssignmentsByJobsite(req.params.id));
   });
 
   // ─── AI Photo Analysis ──────────────────────────────────────────────────────

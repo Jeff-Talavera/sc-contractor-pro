@@ -12,6 +12,7 @@ import JobsitesPage from "@/pages/jobsites";
 import InspectionsPage from "@/pages/inspections";
 import CodeLibraryPage from "@/pages/code-library";
 import WorkforcePage from "@/pages/workforce";
+import ContractorsPage from "@/pages/contractors";
 import SafetyRatingsPage from "@/pages/safety-ratings";
 import SettingsPage from "@/pages/settings";
 import LoginPage from "@/pages/login";
@@ -26,6 +27,7 @@ const routePageNames: Array<[string, string]> = [
   ["/inspections", "Inspections"],
   ["/code-library", "Code Library"],
   ["/workforce", "Workforce"],
+  ["/contractors", "Contractors"],
   ["/safety-ratings", "Safety Ratings"],
   ["/settings", "Settings"],
   ["/", "Dashboard"],
@@ -175,6 +177,8 @@ function AppShell() {
               <Route path="/code-library" component={CodeLibraryPage} />
               <Route path="/workforce" component={WorkforcePage} />
               <Route path="/workforce/:id" component={WorkforcePage} />
+              <Route path="/contractors" component={ContractorsPage} />
+              <Route path="/contractors/:id" component={ContractorsPage} />
               <Route path="/safety-ratings" component={SafetyRatingsPage} />
               <Route path="/safety-ratings/:clientId" component={SafetyRatingsPage} />
               <Route path="/settings" component={SettingsPage} />

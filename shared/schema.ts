@@ -47,6 +47,35 @@ export interface Jobsite {
   hasCrane: boolean;
   hasExcavation: boolean;
   monitorPublicRecords: boolean;
+  primaryInspectorId?: string;
+}
+
+export interface IndependentContractor {
+  id: string;
+  organizationId: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  licenseType: string;
+  licenseNumber?: string;
+  certifications: string[];
+  plCarrier?: string;
+  plPolicyNumber?: string;
+  plExpiryDate?: string;
+  glCarrier?: string;
+  glPolicyNumber?: string;
+  glExpiryDate?: string;
+  status: "active" | "inactive";
+  notes?: string;
+}
+
+export interface ContractorJobsiteAssignment {
+  id: string;
+  contractorId: string;
+  jobsiteId: string;
+  startDate?: string;
+  endDate?: string;
+  role?: string;
 }
 
 export interface CodeReference {
@@ -405,6 +434,30 @@ export const insertSafetyReportSchema = z.object({
   photos: z.array(z.string()).max(10).default([]),
 });
 
+export const insertIndependentContractorSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Valid email required").optional().or(z.literal("")),
+  phone: z.string().optional(),
+  licenseType: z.string().min(1, "License type is required"),
+  licenseNumber: z.string().optional(),
+  certifications: z.array(z.string()).default([]),
+  plCarrier: z.string().optional(),
+  plPolicyNumber: z.string().optional(),
+  plExpiryDate: z.string().optional(),
+  glCarrier: z.string().optional(),
+  glPolicyNumber: z.string().optional(),
+  glExpiryDate: z.string().optional(),
+  status: z.enum(["active", "inactive"]).default("active"),
+  notes: z.string().optional(),
+});
+
+export const insertContractorAssignmentSchema = z.object({
+  jobsiteId: z.string().min(1, "Jobsite is required"),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  role: z.string().optional(),
+});
+
 export const updateOrganizationSchema = z.object({
   logoUrl: z.string().nullable().optional(),
 });
@@ -435,3 +488,5 @@ export type InsertTimesheetEntry = z.infer<typeof insertTimesheetEntrySchema>;
 export type InsertSafetyReport = z.infer<typeof insertSafetyReportSchema>;
 export type UpdateSafetySettings = z.infer<typeof updateSafetySettingsSchema>;
 export type UpdateOrganization = z.infer<typeof updateOrganizationSchema>;
+export type InsertIndependentContractor = z.infer<typeof insertIndependentContractorSchema>;
+export type InsertContractorAssignment = z.infer<typeof insertContractorAssignmentSchema>;

@@ -4,10 +4,12 @@ import type {
   JobsitePermit, JobsiteExternalEvent,
   EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry,
   SafetyReport, SafetyReportSettings,
+  IndependentContractor, ContractorJobsiteAssignment,
   InsertClient, InsertJobsite, InsertInspection, InsertObservation,
   InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry,
   InsertSafetyReport, UpdateSafetySettings, UpdateOrganization,
-  UpdateInspectionReport
+  UpdateInspectionReport,
+  InsertIndependentContractor, InsertContractorAssignment
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
@@ -142,6 +144,30 @@ function mapJobsite(row: typeof t.jobsites.$inferSelect): Jobsite {
     hasScaffold: row.hasScaffold, hasHoist: row.hasHoist,
     hasCrane: row.hasCrane, hasExcavation: row.hasExcavation,
     monitorPublicRecords: row.monitorPublicRecords,
+    primaryInspectorId: row.primaryInspectorId ?? undefined,
+  };
+}
+
+function mapContractor(row: typeof t.independentContractors.$inferSelect): IndependentContractor {
+  return {
+    id: row.id, organizationId: row.organizationId,
+    name: row.name, email: row.email ?? undefined, phone: row.phone ?? undefined,
+    licenseType: row.licenseType, licenseNumber: row.licenseNumber ?? undefined,
+    certifications: (row.certifications as string[]) ?? [],
+    plCarrier: row.plCarrier ?? undefined, plPolicyNumber: row.plPolicyNumber ?? undefined,
+    plExpiryDate: row.plExpiryDate ?? undefined,
+    glCarrier: row.glCarrier ?? undefined, glPolicyNumber: row.glPolicyNumber ?? undefined,
+    glExpiryDate: row.glExpiryDate ?? undefined,
+    status: (row.status as IndependentContractor["status"]) ?? "active",
+    notes: row.notes ?? undefined,
+  };
+}
+
+function mapContractorAssignment(row: typeof t.contractorJobsiteAssignments.$inferSelect): ContractorJobsiteAssignment {
+  return {
+    id: row.id, contractorId: row.contractorId, jobsiteId: row.jobsiteId,
+    startDate: row.startDate ?? undefined, endDate: row.endDate ?? undefined,
+    role: row.role ?? undefined,
   };
 }
 
@@ -385,6 +411,17 @@ export interface IStorage {
 
   getSafetySettings(orgId: string): Promise<SafetyReportSettings>;
   updateSafetySettings(orgId: string, data: UpdateSafetySettings): Promise<SafetyReportSettings>;
+
+  // ─── Contractors ──────────────────────────────────────────────────────────
+  getContractorsByOrg(orgId: string): Promise<IndependentContractor[]>;
+  getContractor(id: string): Promise<IndependentContractor | undefined>;
+  createContractor(orgId: string, data: InsertIndependentContractor): Promise<IndependentContractor>;
+  updateContractor(id: string, updates: Partial<IndependentContractor>): Promise<IndependentContractor | undefined>;
+  deleteContractor(id: string): Promise<boolean>;
+  getAssignmentsByContractor(contractorId: string): Promise<ContractorJobsiteAssignment[]>;
+  getAssignmentsByJobsite(jobsiteId: string): Promise<ContractorJobsiteAssignment[]>;
+  createContractorAssignment(contractorId: string, data: InsertContractorAssignment): Promise<ContractorJobsiteAssignment>;
+  deleteContractorAssignment(assignmentId: string): Promise<boolean>;
 
   // ─── Super-admin methods ──────────────────────────────────────────────────
   adminListOrgs(): Promise<Organization[]>;
@@ -1012,6 +1049,106 @@ export class DatabaseStorage implements IStorage {
       .where(eq(t.inspections.organizationId, orgId))
       .orderBy(desc(t.inspections.date));
     return rows.map(mapInspection);
+  }
+
+  // ─── Contractors ──────────────────────────────────────────────────────────
+
+  async getContractorsByOrg(orgId: string): Promise<IndependentContractor[]> {
+    const rows = await db.select().from(t.independentContractors)
+      .where(eq(t.independentContractors.organizationId, orgId));
+    return rows.map(mapContractor);
+  }
+
+  async getContractor(id: string): Promise<IndependentContractor | undefined> {
+    const rows = await db.select().from(t.independentContractors)
+      .where(eq(t.independentContractors.id, id));
+    return rows[0] ? mapContractor(rows[0]) : undefined;
+  }
+
+  async createContractor(orgId: string, data: InsertIndependentContractor): Promise<IndependentContractor> {
+    const id = `ctr-${randomUUID().slice(0, 8)}`;
+    const rows = await db.insert(t.independentContractors).values({
+      id, organizationId: orgId,
+      name: data.name,
+      email: data.email || null,
+      phone: data.phone || null,
+      licenseType: data.licenseType,
+      licenseNumber: data.licenseNumber || null,
+      certifications: data.certifications ?? [],
+      plCarrier: data.plCarrier || null,
+      plPolicyNumber: data.plPolicyNumber || null,
+      plExpiryDate: data.plExpiryDate || null,
+      glCarrier: data.glCarrier || null,
+      glPolicyNumber: data.glPolicyNumber || null,
+      glExpiryDate: data.glExpiryDate || null,
+      status: data.status ?? "active",
+      notes: data.notes || null,
+    }).returning();
+    return mapContractor(rows[0]);
+  }
+
+  async updateContractor(id: string, updates: Partial<IndependentContractor>): Promise<IndependentContractor | undefined> {
+    const dbUpdates: Record<string, unknown> = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.email !== undefined) dbUpdates.email = updates.email || null;
+    if (updates.phone !== undefined) dbUpdates.phone = updates.phone || null;
+    if (updates.licenseType !== undefined) dbUpdates.licenseType = updates.licenseType;
+    if (updates.licenseNumber !== undefined) dbUpdates.licenseNumber = updates.licenseNumber || null;
+    if (updates.certifications !== undefined) dbUpdates.certifications = updates.certifications;
+    if (updates.plCarrier !== undefined) dbUpdates.plCarrier = updates.plCarrier || null;
+    if (updates.plPolicyNumber !== undefined) dbUpdates.plPolicyNumber = updates.plPolicyNumber || null;
+    if (updates.plExpiryDate !== undefined) dbUpdates.plExpiryDate = updates.plExpiryDate || null;
+    if (updates.glCarrier !== undefined) dbUpdates.glCarrier = updates.glCarrier || null;
+    if (updates.glPolicyNumber !== undefined) dbUpdates.glPolicyNumber = updates.glPolicyNumber || null;
+    if (updates.glExpiryDate !== undefined) dbUpdates.glExpiryDate = updates.glExpiryDate || null;
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes || null;
+    const rows = await db.update(t.independentContractors)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .set(dbUpdates as any)
+      .where(eq(t.independentContractors.id, id))
+      .returning();
+    return rows[0] ? mapContractor(rows[0]) : undefined;
+  }
+
+  async deleteContractor(id: string): Promise<boolean> {
+    await db.delete(t.contractorJobsiteAssignments)
+      .where(eq(t.contractorJobsiteAssignments.contractorId, id));
+    const result = await db.delete(t.independentContractors)
+      .where(eq(t.independentContractors.id, id))
+      .returning();
+    return result.length > 0;
+  }
+
+  async getAssignmentsByContractor(contractorId: string): Promise<ContractorJobsiteAssignment[]> {
+    const rows = await db.select().from(t.contractorJobsiteAssignments)
+      .where(eq(t.contractorJobsiteAssignments.contractorId, contractorId));
+    return rows.map(mapContractorAssignment);
+  }
+
+  async getAssignmentsByJobsite(jobsiteId: string): Promise<ContractorJobsiteAssignment[]> {
+    const rows = await db.select().from(t.contractorJobsiteAssignments)
+      .where(eq(t.contractorJobsiteAssignments.jobsiteId, jobsiteId));
+    return rows.map(mapContractorAssignment);
+  }
+
+  async createContractorAssignment(contractorId: string, data: InsertContractorAssignment): Promise<ContractorJobsiteAssignment> {
+    const id = `asgn-${randomUUID().slice(0, 8)}`;
+    const rows = await db.insert(t.contractorJobsiteAssignments).values({
+      id, contractorId,
+      jobsiteId: data.jobsiteId,
+      startDate: data.startDate || null,
+      endDate: data.endDate || null,
+      role: data.role || null,
+    }).returning();
+    return mapContractorAssignment(rows[0]);
+  }
+
+  async deleteContractorAssignment(assignmentId: string): Promise<boolean> {
+    const result = await db.delete(t.contractorJobsiteAssignments)
+      .where(eq(t.contractorJobsiteAssignments.id, assignmentId))
+      .returning();
+    return result.length > 0;
   }
 }
 
