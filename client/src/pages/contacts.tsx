@@ -68,7 +68,7 @@ export default function ContactsPage() {
 
   const { data: jobsites = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ["/api/jobsites"] });
   const { data: clients = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ["/api/clients"] });
-  const { data: tradeCompanies = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ["/api/trade-companies"] });
+  const { data: tradeCompanies = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ["/api/trades"] });
   const { data: contractors = [] } = useQuery<{ id: string; name: string }[]>({ queryKey: ["/api/contractors"] });
 
   const entityOptions: { id: string; name: string }[] =
