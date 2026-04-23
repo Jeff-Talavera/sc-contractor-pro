@@ -1088,7 +1088,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateContractor(id: string, updates: Partial<IndependentContractor>): Promise<IndependentContractor | undefined> {
-    const dbUpdates: Record<string, unknown> = {};
+    const dbUpdates: Partial<typeof t.independentContractors.$inferInsert> = {};
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (updates.email !== undefined) dbUpdates.email = updates.email || null;
     if (updates.phone !== undefined) dbUpdates.phone = updates.phone || null;
@@ -1104,8 +1104,7 @@ export class DatabaseStorage implements IStorage {
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.notes !== undefined) dbUpdates.notes = updates.notes || null;
     const rows = await db.update(t.independentContractors)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .set(dbUpdates as any)
+      .set(dbUpdates)
       .where(eq(t.independentContractors.id, id))
       .returning();
     return rows[0] ? mapContractor(rows[0]) : undefined;
