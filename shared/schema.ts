@@ -564,8 +564,12 @@ export interface ContactAssociation {
   relationship?: string | null;
 }
 
+export interface ContactAssociationEnriched extends ContactAssociation {
+  entityName?: string | null;
+}
+
 export interface ContactWithAssociations extends Contact {
-  associations: ContactAssociation[];
+  associations: ContactAssociationEnriched[];
 }
 
 export const ENTITY_TYPES = ["jobsite", "client", "trade_company", "contractor"] as const;

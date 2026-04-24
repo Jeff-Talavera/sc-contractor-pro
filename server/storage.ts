@@ -6,7 +6,7 @@ import type {
   SafetyReport, SafetyReportSettings,
   IndependentContractor, ContractorJobsiteAssignment,
   TradeCompany, JobsiteTradeAssignment,
-  Contact, ContactAssociation, ContactWithAssociations,
+  Contact, ContactAssociation, ContactAssociationEnriched, ContactWithAssociations,
   InsertClient, InsertJobsite, InsertInspection, InsertObservation,
   InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry,
   InsertSafetyReport, UpdateSafetySettings, UpdateOrganization,
@@ -1357,7 +1357,26 @@ export class DatabaseStorage implements IStorage {
     if (!contact) return undefined;
     const associations = await db.select().from(t.contactAssociations)
       .where(eq(t.contactAssociations.contactId, id));
-    return { ...contact, associations };
+    const enriched: ContactAssociationEnriched[] = await Promise.all(
+      associations.map(async (a) => {
+        let entityName: string | null = null;
+        if (a.entityType === "jobsite") {
+          const rows = await db.select({ name: t.jobsites.name }).from(t.jobsites).where(eq(t.jobsites.id, a.entityId));
+          entityName = rows[0]?.name ?? null;
+        } else if (a.entityType === "client") {
+          const rows = await db.select({ name: t.clients.name }).from(t.clients).where(eq(t.clients.id, a.entityId));
+          entityName = rows[0]?.name ?? null;
+        } else if (a.entityType === "trade_company") {
+          const rows = await db.select({ name: t.tradeCompanies.name }).from(t.tradeCompanies).where(eq(t.tradeCompanies.id, a.entityId));
+          entityName = rows[0]?.name ?? null;
+        } else if (a.entityType === "contractor") {
+          const rows = await db.select({ name: t.independentContractors.name }).from(t.independentContractors).where(eq(t.independentContractors.id, a.entityId));
+          entityName = rows[0]?.name ?? null;
+        }
+        return { ...a, entityName };
+      })
+    );
+    return { ...contact, associations: enriched };
   }
 
   async createContact(orgId: string, data: InsertContact): Promise<Contact> {

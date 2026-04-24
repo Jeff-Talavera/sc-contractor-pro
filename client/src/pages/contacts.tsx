@@ -15,7 +15,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Search, Mail, Phone, Building2, Pencil, Trash2, Link2, X } from "lucide-react";
+import { Plus, Search, Mail, Phone, Building2, Pencil, Trash2, Link2, X, ExternalLink } from "lucide-react";
+import { Link } from "wouter";
 import type { Contact, ContactWithAssociations, InsertContact } from "@shared/schema";
 import { insertContactSchema } from "@shared/schema";
 
@@ -489,29 +490,49 @@ export default function ContactsPage() {
 
                 {detailData.associations.length > 0 ? (
                   <div className="space-y-2">
-                    {detailData.associations.map(a => (
-                      <div
-                        key={a.id}
-                        className="flex items-center justify-between gap-3 p-2 rounded border bg-muted/30 text-sm"
-                        data-testid={`row-assoc-${a.id}`}
-                      >
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <AssociationBadge entityType={a.entityType} />
-                          <span className="text-xs text-muted-foreground font-mono">{a.entityId.slice(0, 8)}…</span>
-                          {a.relationship && <span className="text-xs italic text-muted-foreground">"{a.relationship}"</span>}
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="shrink-0 h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                          onClick={() => removeAssocMutation.mutate(a.id)}
-                          disabled={removeAssocMutation.isPending}
-                          data-testid={`button-remove-assoc-${a.id}`}
+                    {detailData.associations.map(a => {
+                      const entityPath =
+                        a.entityType === "jobsite" ? `/jobsites/${a.entityId}` :
+                        a.entityType === "client" ? `/clients/${a.entityId}` :
+                        a.entityType === "contractor" ? `/contractors/${a.entityId}` :
+                        a.entityType === "trade_company" ? `/trades` : null;
+                      const displayName = a.entityName ?? a.entityId.slice(0, 8) + "…";
+                      return (
+                        <div
+                          key={a.id}
+                          className="flex items-center justify-between gap-3 p-2 rounded border bg-muted/30 text-sm"
+                          data-testid={`row-assoc-${a.id}`}
                         >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <AssociationBadge entityType={a.entityType} />
+                            {entityPath ? (
+                              <Link
+                                href={entityPath}
+                                className="text-sm font-medium text-blue-600 hover:underline flex items-center gap-1 truncate"
+                                onClick={() => setDetailContact(null)}
+                                data-testid={`link-assoc-entity-${a.id}`}
+                              >
+                                {displayName}
+                                <ExternalLink className="h-3 w-3 shrink-0" />
+                              </Link>
+                            ) : (
+                              <span className="text-sm font-medium truncate" data-testid={`text-assoc-entity-${a.id}`}>{displayName}</span>
+                            )}
+                            {a.relationship && <span className="text-xs italic text-muted-foreground">"{a.relationship}"</span>}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="shrink-0 h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => removeAssocMutation.mutate(a.id)}
+                            disabled={removeAssocMutation.isPending}
+                            data-testid={`button-remove-assoc-${a.id}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground py-2">No associations yet.</p>
