@@ -1,4 +1,4 @@
-import type { SafetyReport, Client, Organization } from "@shared/schema";
+import type { SafetyReport, Client, Organization, Contact } from "@shared/schema";
 
 function splitLines(doc: any, text: string, maxWidth: number): string[] {
   return doc.splitTextToSize(text || "", maxWidth);
@@ -71,6 +71,7 @@ export async function exportSafetyReportPDF(
   client: Client,
   org: Organization,
   parentClient?: Client,
+  ccContacts?: Contact[],
 ) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
@@ -169,6 +170,9 @@ export async function exportSafetyReportPDF(
     ["Total Headcount", report.totalHeadcount.toLocaleString()],
     ["Report Prepared By", org.name],
     ["Report Date", generatedDate],
+    ...(ccContacts && ccContacts.length > 0
+      ? [["CC / Distribution", ccContacts.map(c => `${c.name}${c.title ? `, ${c.title}` : ""}${c.company ? ` — ${c.company}` : ""}${c.email ? ` <${c.email}>` : ""}`).join("; ")] as [string, string]]
+      : []),
   ];
 
   const rowH = 9;

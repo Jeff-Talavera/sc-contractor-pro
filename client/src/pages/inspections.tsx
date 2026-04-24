@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation, Link } from "wouter";
 import type {
   Inspection, InspectionTemplate, Jobsite, User, Observation,
-  CodeReference, Client, AiFinding, EmployeeProfile, Organization
+  CodeReference, Client, AiFinding, EmployeeProfile, Organization, Contact
 } from "@shared/schema";
 import { insertObservationSchema } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -971,13 +971,35 @@ function AddObservationForm({
 
 function ReportDetailsDialog({
   inspection,
+  jobsiteId,
   onClose,
 }: {
   inspection: Inspection;
+  jobsiteId: string;
   onClose: () => void;
 }) {
   const { toast } = useToast();
   const [ccText, setCcText] = useState((inspection.ccList ?? []).join("\n"));
+
+  const { data: jobsiteContacts } = useQuery<Contact[]>({
+    queryKey: ["/api/entities/jobsite", jobsiteId, "contacts"],
+    queryFn: async () => {
+      const res = await fetch(`/api/entities/jobsite/${jobsiteId}/contacts`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!jobsiteId,
+  });
+
+  const addContactToCc = (contact: Contact) => {
+    const namePart = [contact.name, contact.title, contact.company].filter(Boolean).join(", ");
+    const entry = contact.email ? `${namePart} <${contact.email}>` : namePart;
+    setCcText(prev => {
+      const lines = prev.split("\n").map(s => s.trim()).filter(Boolean);
+      if (lines.some(l => l.toLowerCase().includes(contact.name.toLowerCase()))) return prev;
+      return lines.length > 0 ? prev.trimEnd() + "\n" + entry : entry;
+    });
+  };
 
   const form = useForm({
     defaultValues: {
@@ -1053,6 +1075,26 @@ function ReportDetailsDialog({
         <div>
           <label className="text-sm font-medium">CC List</label>
           <p className="text-xs text-muted-foreground mb-1">One entry per line (e.g., "James Chen, SafeGuard NYC")</p>
+          {jobsiteContacts && jobsiteContacts.length > 0 && (
+            <div className="mb-2">
+              <p className="text-xs text-muted-foreground mb-1.5">Add from jobsite contacts:</p>
+              <div className="flex flex-wrap gap-1.5" data-testid="jobsite-contacts-chips">
+                {jobsiteContacts.map(contact => (
+                  <button
+                    key={contact.id}
+                    type="button"
+                    onClick={() => addContactToCc(contact)}
+                    className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 hover:bg-muted px-2.5 py-1 text-xs transition-colors"
+                    data-testid={`chip-contact-${contact.id}`}
+                  >
+                    <Plus className="h-3 w-3 text-muted-foreground" />
+                    {contact.name}
+                    {contact.title && <span className="text-muted-foreground">, {contact.title}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <Textarea
             value={ccText}
             onChange={e => setCcText(e.target.value)}
@@ -1287,6 +1329,7 @@ function InspectionDetail({ id }: { id: string }) {
                   {showReportDetails && (
                     <ReportDetailsDialog
                       inspection={inspection}
+                      jobsiteId={inspection.jobsiteId}
                       onClose={() => setShowReportDetails(false)}
                     />
                   )}

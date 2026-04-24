@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import type { SafetyReport, SafetyReportSettings, Client, Organization } from "@shared/schema";
+import type { SafetyReport, SafetyReportSettings, Client, Organization, Contact } from "@shared/schema";
 import { insertSafetyReportSchema, updateSafetySettingsSchema } from "@shared/schema";
 import type { UpdateSafetySettings } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -637,6 +637,125 @@ function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
   );
 }
 
+// ─── Download With Contacts Dialog ────────────────────────────────────────────
+
+function DownloadWithContactsDialog({
+  report,
+  client,
+  org,
+  parentClient,
+  open,
+  onOpenChange,
+}: {
+  report: SafetyReport;
+  client: Client;
+  org: Organization;
+  parentClient?: Client;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
+
+  const { data: contacts, isLoading } = useQuery<Contact[]>({
+    queryKey: ["/api/entities/client", client.id, "contacts"],
+    queryFn: async () => {
+      const res = await fetch(`/api/entities/client/${client.id}/contacts`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  const toggle = (id: string) =>
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const selected = (contacts ?? []).filter(c => selectedIds.has(c.id));
+      await exportSafetyReportPDF(report, client, org, parentClient, selected.length > 0 ? selected : undefined);
+      onOpenChange(false);
+    } catch (err: unknown) {
+      toast({ title: "Export failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Export Safety Report PDF</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm font-medium mb-1">Notify Contacts (CC)</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Select contacts linked to this contractor to include as CC recipients in the report.
+            </p>
+            {isLoading ? (
+              <div className="space-y-2">
+                {[1, 2].map(i => <Skeleton key={i} className="h-10 w-full" />)}
+              </div>
+            ) : !contacts || contacts.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2 text-center">
+                No contacts linked to this contractor yet.
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1" data-testid="contact-list-safety-report">
+                {contacts.map(contact => (
+                  <label
+                    key={contact.id}
+                    className="flex items-start gap-3 p-2.5 rounded-md border border-border cursor-pointer hover:bg-muted/40 transition-colors"
+                    data-testid={`contact-row-${contact.id}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(contact.id)}
+                      onChange={() => toggle(contact.id)}
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                      data-testid={`checkbox-contact-${contact.id}`}
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{contact.name}</p>
+                      {(contact.title || contact.company) && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {[contact.title, contact.company].filter(Boolean).join(" — ")}
+                        </p>
+                      )}
+                      {contact.email && (
+                        <p className="text-xs text-muted-foreground truncate">{contact.email}</p>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button variant="secondary" className="flex-1" onClick={() => onOpenChange(false)} data-testid="button-cancel-export">
+              Cancel
+            </Button>
+            <Button className="flex-1" onClick={handleExport} disabled={exporting} data-testid="button-confirm-export">
+              {exporting ? "Exporting..." : (
+                <><Download className="h-4 w-4 mr-1.5" /> Export PDF</>
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Category Row ─────────────────────────────────────────────────────────────
 
 function CategoryBreakdown({ report }: { report: SafetyReport }) {
@@ -949,10 +1068,8 @@ function SafetyRatingsDashboard() {
 
 function ContractorSafetyDetail({ clientId }: { clientId: string }) {
   const [showNewReport, setShowNewReport] = useState(false);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [downloadingSubId, setDownloadingSubId] = useState<string | null>(null);
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
-  const { toast } = useToast();
+  const [downloadTarget, setDownloadTarget] = useState<{ report: SafetyReport; client: Client; parent?: Client } | null>(null);
 
   const { data: reports, isLoading } = useQuery<SafetyReport[]>({
     queryKey: ["/api/safety-reports/client", clientId],
@@ -977,30 +1094,6 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
     incidents: r.incidentHistoryScore,
     training: r.trainingComplianceScore,
   }));
-
-  const handleDownload = async (report: SafetyReport) => {
-    if (!client || !meData?.organization) return;
-    setDownloadingId(report.id);
-    try {
-      await exportSafetyReportPDF(report, client, meData.organization, parentClient);
-    } catch (err: unknown) {
-      toast({ title: "Export failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setDownloadingId(null);
-    }
-  };
-
-  const handleDownloadSub = async (sub: Client, subReport: SafetyReport) => {
-    if (!meData?.organization) return;
-    setDownloadingSubId(subReport.id);
-    try {
-      await exportSafetyReportPDF(subReport, sub, meData.organization, client ?? undefined);
-    } catch (err: unknown) {
-      toast({ title: "Export failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setDownloadingSubId(null);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -1221,12 +1314,11 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleDownloadSub(sub, latestSubReport)}
-                          disabled={downloadingSubId === latestSubReport.id}
+                          onClick={() => setDownloadTarget({ report: latestSubReport, client: sub, parent: client ?? undefined })}
                           data-testid={`button-download-sub-${sub.id}`}
                         >
                           <Download className="h-3.5 w-3.5 mr-1" />
-                          {downloadingSubId === latestSubReport.id ? "..." : "PDF"}
+                          PDF
                         </Button>
                       )}
                     </div>
@@ -1266,12 +1358,12 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleDownload(report)}
-                            disabled={downloadingId === report.id}
+                            onClick={() => client && setDownloadTarget({ report, client, parent: parentClient })}
+                            disabled={!client || !meData?.organization}
                             data-testid={`button-download-report-${report.id}`}
                           >
                             <Download className="h-3.5 w-3.5 mr-1" />
-                            {downloadingId === report.id ? "..." : "PDF"}
+                            PDF
                           </Button>
                         </div>
                       </div>
@@ -1285,6 +1377,17 @@ function ContractorSafetyDetail({ clientId }: { clientId: string }) {
       </div>
 
       <NewReportDialog defaultClientId={clientId} open={showNewReport} onOpenChange={setShowNewReport} />
+
+      {downloadTarget && meData?.organization && (
+        <DownloadWithContactsDialog
+          report={downloadTarget.report}
+          client={downloadTarget.client}
+          org={meData.organization}
+          parentClient={downloadTarget.parent}
+          open={!!downloadTarget}
+          onOpenChange={(v) => { if (!v) setDownloadTarget(null); }}
+        />
+      )}
 
       {expandedPhoto && (
         <Dialog open={!!expandedPhoto} onOpenChange={() => setExpandedPhoto(null)}>
