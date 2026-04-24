@@ -19,7 +19,7 @@ import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
 import { db } from "./db";
 import * as t from "@shared/tables";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, inArray } from "drizzle-orm";
 
 // ─── Drizzle insert/update row types ─────────────────────────────────────────
 
@@ -1357,25 +1357,49 @@ export class DatabaseStorage implements IStorage {
     if (!contact) return undefined;
     const associations = await db.select().from(t.contactAssociations)
       .where(eq(t.contactAssociations.contactId, id));
-    const enriched: ContactAssociationEnriched[] = await Promise.all(
-      associations.map(async (a) => {
-        let entityName: string | null = null;
-        if (a.entityType === "jobsite") {
-          const rows = await db.select({ name: t.jobsites.name }).from(t.jobsites).where(eq(t.jobsites.id, a.entityId));
-          entityName = rows[0]?.name ?? null;
-        } else if (a.entityType === "client") {
-          const rows = await db.select({ name: t.clients.name }).from(t.clients).where(eq(t.clients.id, a.entityId));
-          entityName = rows[0]?.name ?? null;
-        } else if (a.entityType === "trade_company") {
-          const rows = await db.select({ name: t.tradeCompanies.name }).from(t.tradeCompanies).where(eq(t.tradeCompanies.id, a.entityId));
-          entityName = rows[0]?.name ?? null;
-        } else if (a.entityType === "contractor") {
-          const rows = await db.select({ name: t.independentContractors.name }).from(t.independentContractors).where(eq(t.independentContractors.id, a.entityId));
-          entityName = rows[0]?.name ?? null;
+    const byType: Record<string, string[]> = {};
+    for (const a of associations) {
+      if (!byType[a.entityType]) byType[a.entityType] = [];
+      byType[a.entityType].push(a.entityId);
+    }
+
+    const nameMap: Record<string, string> = {};
+
+    await Promise.all([
+      (async () => {
+        const ids = byType["jobsite"];
+        if (ids?.length) {
+          const rows = await db.select({ id: t.jobsites.id, name: t.jobsites.name }).from(t.jobsites).where(inArray(t.jobsites.id, ids));
+          for (const r of rows) nameMap[r.id] = r.name;
         }
-        return { ...a, entityName };
-      })
-    );
+      })(),
+      (async () => {
+        const ids = byType["client"];
+        if (ids?.length) {
+          const rows = await db.select({ id: t.clients.id, name: t.clients.name }).from(t.clients).where(inArray(t.clients.id, ids));
+          for (const r of rows) nameMap[r.id] = r.name;
+        }
+      })(),
+      (async () => {
+        const ids = byType["trade_company"];
+        if (ids?.length) {
+          const rows = await db.select({ id: t.tradeCompanies.id, name: t.tradeCompanies.name }).from(t.tradeCompanies).where(inArray(t.tradeCompanies.id, ids));
+          for (const r of rows) nameMap[r.id] = r.name;
+        }
+      })(),
+      (async () => {
+        const ids = byType["contractor"];
+        if (ids?.length) {
+          const rows = await db.select({ id: t.independentContractors.id, name: t.independentContractors.name }).from(t.independentContractors).where(inArray(t.independentContractors.id, ids));
+          for (const r of rows) nameMap[r.id] = r.name;
+        }
+      })(),
+    ]);
+
+    const enriched: ContactAssociationEnriched[] = associations.map((a) => ({
+      ...a,
+      entityName: nameMap[a.entityId] ?? null,
+    }));
     return { ...contact, associations: enriched };
   }
 
