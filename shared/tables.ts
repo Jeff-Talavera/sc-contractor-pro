@@ -426,3 +426,42 @@ export const workHoursLog = pgTable("work_hours_log", {
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
 });
+
+// ─── Phase 7D: Drivers, Delivery Requests & NFC Events ───────────────────────
+
+export const drivers = pgTable("drivers", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  userId: text("user_id"),
+  name: text("name").notNull(),
+  licenseNumber: text("license_number"),
+  phone: text("phone"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdAt: text("created_at"),
+});
+
+export const deliveryRequests = pgTable("delivery_requests", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  jobsiteId: text("jobsite_id"),
+  requestedBy: text("requested_by"),
+  approvedBy: text("approved_by"),
+  driverId: text("driver_id"),
+  description: text("description").notNull(),
+  status: text("status").notNull().default("requested"),
+  scheduledDate: text("scheduled_date"),
+  notes: text("notes"),
+  createdAt: text("created_at"),
+});
+
+export const deliveryNfcEvents = pgTable("delivery_nfc_events", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  deliveryRequestId: text("delivery_request_id").notNull(),
+  eventType: text("event_type").notNull(),
+  scannedBy: text("scanned_by"),
+  jobsiteId: text("jobsite_id"),
+  notes: text("notes"),
+  createdAt: text("created_at"),
+});
