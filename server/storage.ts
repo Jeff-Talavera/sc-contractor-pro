@@ -7,13 +7,15 @@ import type {
   IndependentContractor, ContractorJobsiteAssignment,
   TradeCompany, JobsiteTradeAssignment,
   Contact, ContactAssociation, ContactAssociationEnriched, ContactWithAssociations,
+  ContractorCompany,
   InsertClient, InsertJobsite, InsertInspection, InsertObservation,
   InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry,
   InsertSafetyReport, UpdateSafetySettings, UpdateOrganization,
   UpdateInspectionReport,
   InsertIndependentContractor, InsertContractorAssignment,
   InsertTradeCompany, InsertJobsiteTradeAssignment,
-  InsertContact, InsertContactAssociation
+  InsertContact, InsertContactAssociation,
+  InsertContractorCompany, UpdateContractorCompany
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
@@ -35,6 +37,7 @@ type TimesheetRow      = typeof t.timesheets.$inferInsert;
 type TimesheetEntryRow = typeof t.timesheetEntries.$inferInsert;
 type SafetyReportRow   = typeof t.safetyReports.$inferInsert;
 type SafetySettingsRow = typeof t.safetyReportSettings.$inferInsert;
+type ContractorCompanyRow = typeof t.contractorCompanies.$inferInsert;
 
 // ─── Scoring logic ────────────────────────────────────────────────────────────
 
@@ -477,6 +480,13 @@ export interface IStorage {
   createContactAssociation(contactId: string, data: InsertContactAssociation): Promise<ContactAssociation>;
   deleteContactAssociation(id: string): Promise<boolean>;
   getContactAssociation(id: string): Promise<ContactAssociation | undefined>;
+
+  // ─── Contractor Companies (Phase 7A) ───────────────────────────────────────
+  // Global registry — not org-scoped at row level. Access controlled in route layer.
+  getContractorCompanies(search?: string): Promise<ContractorCompany[]>;
+  getContractorCompany(id: string): Promise<ContractorCompany | undefined>;
+  createContractorCompany(data: InsertContractorCompany): Promise<ContractorCompany>;
+  updateContractorCompany(id: string, updates: UpdateContractorCompany): Promise<ContractorCompany | undefined>;
 
   // ─── Super-admin methods ──────────────────────────────────────────────────
   adminListOrgs(): Promise<Organization[]>;
@@ -1435,6 +1445,59 @@ export class DatabaseStorage implements IStorage {
   async getContactAssociation(id: string): Promise<ContactAssociation | undefined> {
     const rows = await db.select().from(t.contactAssociations).where(eq(t.contactAssociations.id, id));
     return rows[0];
+  }
+
+  // ─── Contractor Companies (Phase 7A) ───────────────────────────────────────
+
+  async getContractorCompanies(search?: string): Promise<ContractorCompany[]> {
+    // Returns all active companies. Optional name search for the picker UI.
+    // No org-scope filter — this is the global registry.
+    // Route layer enforces requireAuth so unauthenticated callers are blocked.
+    const rows = await db.select().from(t.contractorCompanies)
+      .where(eq(t.contractorCompanies.status, "active"))
+      .orderBy(t.contractorCompanies.name);
+    if (!search) return rows as ContractorCompany[];
+    const q = search.toLowerCase();
+    return (rows as ContractorCompany[]).filter(c => c.name.toLowerCase().includes(q));
+  }
+
+  async getContractorCompany(id: string): Promise<ContractorCompany | undefined> {
+    const rows = await db.select().from(t.contractorCompanies)
+      .where(eq(t.contractorCompanies.id, id));
+    return rows[0] as ContractorCompany | undefined;
+  }
+
+  async createContractorCompany(data: InsertContractorCompany): Promise<ContractorCompany> {
+    const now = new Date().toISOString();
+    const row: ContractorCompanyRow = {
+      id: randomUUID(),
+      name: data.name,
+      tradeType: data.tradeType ?? null,
+      contactName: data.contactName ?? null,
+      contactEmail: data.contactEmail ?? null,
+      contactPhone: data.contactPhone ?? null,
+      address: data.address ?? null,
+      licenseNumber: data.licenseNumber ?? null,
+      insuranceCarrier: data.insuranceCarrier ?? null,
+      insuranceExpiry: data.insuranceExpiry ?? null,
+      notes: data.notes ?? null,
+      status: data.status ?? "active",
+      linkedOrganizationId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await db.insert(t.contractorCompanies).values(row).returning();
+    return result[0] as ContractorCompany;
+  }
+
+  async updateContractorCompany(id: string, updates: UpdateContractorCompany): Promise<ContractorCompany | undefined> {
+    const existing = await this.getContractorCompany(id);
+    if (!existing) return undefined;
+    const result = await db.update(t.contractorCompanies)
+      .set({ ...updates, updatedAt: new Date().toISOString() })
+      .where(eq(t.contractorCompanies.id, id))
+      .returning();
+    return result[0] as ContractorCompany | undefined;
   }
 }
 
