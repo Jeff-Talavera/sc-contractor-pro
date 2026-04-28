@@ -1130,3 +1130,40 @@ export const updateInventoryServiceTicketSchema = insertInventoryServiceTicketSc
 
 export type InsertInventoryServiceTicket = z.infer<typeof insertInventoryServiceTicketSchema>;
 export type UpdateInventoryServiceTicket = z.infer<typeof updateInventoryServiceTicketSchema>;
+
+// ─── Phase 7F: Portfolio Shares & Snapshot ───────────────────────────────────
+
+export const PORTFOLIO_SECTIONS = ["trir", "workerCerts", "coi", "jobsites", "oshaIncidents", "inventory"] as const;
+export type PortfolioSection = typeof PORTFOLIO_SECTIONS[number];
+export type VisibleSections = Record<PortfolioSection, boolean>;
+
+export interface PortfolioShare {
+  id: string;
+  organizationId: string;
+  token: string;
+  expiresAt: string;
+  revokedAt?: string;
+  visibleSections: VisibleSections;
+  createdBy?: string;
+  createdAt: string;
+}
+
+export const insertPortfolioShareSchema = z.object({
+  expiresAt: z.string().min(1, "Expiry date is required"),
+  visibleSections: z.record(z.enum(PORTFOLIO_SECTIONS), z.boolean()).optional().default({}),
+  createdBy: z.string().optional(),
+});
+
+export type InsertPortfolioShare = z.infer<typeof insertPortfolioShareSchema>;
+
+export interface PortfolioSnapshot {
+  org: { id: string; name: string; orgType: string; logoUrl?: string };
+  generatedAt: string;
+  visibleSections: VisibleSections;
+  trir?: { trir: number; recordableCases: number; totalHours: number; periodStart: string; periodEnd: string };
+  workerCerts?: { total: number; valid: number; expiringSoon: number; expired: number; noExpiry: number };
+  coi?: Array<{ id: string; companyName: string; coverageType: string; insurer?: string; expiryDate?: string; status: string }>;
+  jobsites?: Array<{ id: string; name: string; address?: string; status: string }>;
+  oshaIncidents?: Array<{ id: string; incidentDate: string; caseType: string; recordableCase: string }>;
+  inventory?: { total: number; checkedOut: number; outOfService: number };
+}
