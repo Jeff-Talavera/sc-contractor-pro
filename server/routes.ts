@@ -17,7 +17,11 @@ import {
   insertWorkHoursLogSchema, updateWorkHoursLogSchema,
   insertDriverSchema, updateDriverSchema,
   insertDeliveryRequestSchema, updateDeliveryRequestSchema, updateDeliveryStatusSchema,
-  insertDeliveryNfcEventSchema
+  insertDeliveryNfcEventSchema,
+  insertInventoryItemSchema, updateInventoryItemSchema,
+  insertInventoryCheckoutSchema, closeInventoryCheckoutSchema,
+  insertInventoryConditionReportSchema,
+  insertInventoryServiceTicketSchema, updateInventoryServiceTicketSchema,
 } from "@shared/schema";
 import type { AiFinding, User, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
@@ -1419,6 +1423,218 @@ export async function registerRoutes(
       res.status(201).json(event);
     } catch {
       res.status(500).json({ message: "Failed to create NFC event" });
+    }
+  });
+
+  // ─── Inventory Items (Phase 7E) ───────────────────────────────────────────
+
+  app.get("/api/inventory-items", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const { category, condition, currentJobsiteId, assignedTo } = req.query as {
+        category?: string; condition?: string; currentJobsiteId?: string; assignedTo?: string;
+      };
+      const filters: { category?: string; condition?: string; currentJobsiteId?: string; assignedTo?: string } = {};
+      if (typeof category === "string" && category) filters.category = category;
+      if (typeof condition === "string" && condition) filters.condition = condition;
+      if (typeof currentJobsiteId === "string" && currentJobsiteId) filters.currentJobsiteId = currentJobsiteId;
+      if (typeof assignedTo === "string" && assignedTo) filters.assignedTo = assignedTo;
+      res.json(await storage.getInventoryItems(orgId, filters));
+    } catch {
+      res.status(500).json({ message: "Failed to fetch inventory items" });
+    }
+  });
+
+  app.get("/api/inventory-items/by-nfc/:nfcTagId", async (req, res) => {
+    try {
+      const item = await storage.getInventoryItemByNfcTag(req.user!.organizationId, req.params.nfcTagId);
+      if (!item) return res.status(404).json({ message: "Inventory item not found" });
+      res.json(item);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch inventory item" });
+    }
+  });
+
+  app.get("/api/inventory-items/:id", async (req, res) => {
+    try {
+      const item = await storage.getInventoryItem(req.user!.organizationId, req.params.id);
+      if (!item) return res.status(404).json({ message: "Inventory item not found" });
+      res.json(item);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch inventory item" });
+    }
+  });
+
+  app.post("/api/inventory-items", async (req, res) => {
+    try {
+      const parsed = insertInventoryItemSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const item = await storage.createInventoryItem(req.user!.organizationId, parsed.data);
+      res.status(201).json(item);
+    } catch {
+      res.status(500).json({ message: "Failed to create inventory item" });
+    }
+  });
+
+  app.patch("/api/inventory-items/:id", async (req, res) => {
+    try {
+      const parsed = updateInventoryItemSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const updated = await storage.updateInventoryItem(req.user!.organizationId, req.params.id, parsed.data);
+      if (!updated) return res.status(404).json({ message: "Inventory item not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update inventory item" });
+    }
+  });
+
+  app.delete("/api/inventory-items/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteInventoryItem(req.user!.organizationId, req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Inventory item not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete inventory item" });
+    }
+  });
+
+  // ─── Inventory Checkouts (Phase 7E) ───────────────────────────────────────
+
+  app.get("/api/inventory-checkouts", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const { inventoryItemId, jobsiteId, open } = req.query as {
+        inventoryItemId?: string; jobsiteId?: string; open?: string;
+      };
+      const filters: { inventoryItemId?: string; jobsiteId?: string; open?: boolean } = {};
+      if (typeof inventoryItemId === "string" && inventoryItemId) filters.inventoryItemId = inventoryItemId;
+      if (typeof jobsiteId === "string" && jobsiteId) filters.jobsiteId = jobsiteId;
+      if (open === "true") filters.open = true;
+      res.json(await storage.getInventoryCheckouts(orgId, filters));
+    } catch {
+      res.status(500).json({ message: "Failed to fetch inventory checkouts" });
+    }
+  });
+
+  app.get("/api/inventory-checkouts/:id", async (req, res) => {
+    try {
+      const checkout = await storage.getInventoryCheckout(req.user!.organizationId, req.params.id);
+      if (!checkout) return res.status(404).json({ message: "Inventory checkout not found" });
+      res.json(checkout);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch inventory checkout" });
+    }
+  });
+
+  app.post("/api/inventory-checkouts", async (req, res) => {
+    try {
+      const parsed = insertInventoryCheckoutSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      const item = await storage.getInventoryItem(orgId, parsed.data.inventoryItemId);
+      if (!item) return res.status(404).json({ message: "Inventory item not found" });
+      const checkout = await storage.createInventoryCheckout(orgId, parsed.data);
+      res.status(201).json(checkout);
+    } catch {
+      res.status(500).json({ message: "Failed to create inventory checkout" });
+    }
+  });
+
+  app.post("/api/inventory-checkouts/:id/close", async (req, res) => {
+    try {
+      const parsed = closeInventoryCheckoutSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      const existing = await storage.getInventoryCheckout(orgId, req.params.id);
+      if (!existing) return res.status(404).json({ message: "Inventory checkout not found" });
+      if (existing.returnedAt) return res.status(400).json({ message: "Checkout already closed" });
+      const closed = await storage.closeInventoryCheckout(orgId, req.params.id, parsed.data);
+      if (!closed) return res.status(404).json({ message: "Inventory checkout not found" });
+      res.json(closed);
+    } catch {
+      res.status(500).json({ message: "Failed to close inventory checkout" });
+    }
+  });
+
+  // ─── Inventory Condition Reports (Phase 7E) ───────────────────────────────
+
+  app.get("/api/inventory-condition-reports", async (req, res) => {
+    try {
+      const { inventoryItemId } = req.query as { inventoryItemId?: string };
+      if (typeof inventoryItemId !== "string" || !inventoryItemId) {
+        return res.status(400).json({ message: "inventoryItemId is required" });
+      }
+      const reports = await storage.getInventoryConditionReports(req.user!.organizationId, inventoryItemId);
+      res.json(reports);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch condition reports" });
+    }
+  });
+
+  app.post("/api/inventory-condition-reports", async (req, res) => {
+    try {
+      const parsed = insertInventoryConditionReportSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      const item = await storage.getInventoryItem(orgId, parsed.data.inventoryItemId);
+      if (!item) return res.status(404).json({ message: "Inventory item not found" });
+      const report = await storage.createInventoryConditionReport(orgId, parsed.data);
+      res.status(201).json(report);
+    } catch {
+      res.status(500).json({ message: "Failed to create condition report" });
+    }
+  });
+
+  // ─── Inventory Service Tickets (Phase 7E) ─────────────────────────────────
+
+  app.get("/api/inventory-service-tickets", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const { inventoryItemId, status } = req.query as {
+        inventoryItemId?: string; status?: string;
+      };
+      const filters: { inventoryItemId?: string; status?: string } = {};
+      if (typeof inventoryItemId === "string" && inventoryItemId) filters.inventoryItemId = inventoryItemId;
+      if (typeof status === "string" && status) filters.status = status;
+      res.json(await storage.getInventoryServiceTickets(orgId, filters));
+    } catch {
+      res.status(500).json({ message: "Failed to fetch service tickets" });
+    }
+  });
+
+  app.get("/api/inventory-service-tickets/:id", async (req, res) => {
+    try {
+      const ticket = await storage.getInventoryServiceTicket(req.user!.organizationId, req.params.id);
+      if (!ticket) return res.status(404).json({ message: "Service ticket not found" });
+      res.json(ticket);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch service ticket" });
+    }
+  });
+
+  app.post("/api/inventory-service-tickets", async (req, res) => {
+    try {
+      const parsed = insertInventoryServiceTicketSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      const item = await storage.getInventoryItem(orgId, parsed.data.inventoryItemId);
+      if (!item) return res.status(404).json({ message: "Inventory item not found" });
+      const ticket = await storage.createInventoryServiceTicket(orgId, parsed.data);
+      res.status(201).json(ticket);
+    } catch {
+      res.status(500).json({ message: "Failed to create service ticket" });
+    }
+  });
+
+  app.patch("/api/inventory-service-tickets/:id", async (req, res) => {
+    try {
+      const parsed = updateInventoryServiceTicketSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const updated = await storage.updateInventoryServiceTicket(req.user!.organizationId, req.params.id, parsed.data);
+      if (!updated) return res.status(404).json({ message: "Service ticket not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update service ticket" });
     }
   });
 
