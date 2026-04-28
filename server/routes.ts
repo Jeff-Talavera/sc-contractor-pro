@@ -10,7 +10,9 @@ import {
   insertIndependentContractorSchema, insertContractorAssignmentSchema,
   insertTradeCompanySchema, insertJobsiteTradeAssignmentSchema,
   insertContactSchema, insertContactAssociationSchema,
-  insertContractorCompanySchema, updateContractorCompanySchema
+  insertContractorCompanySchema, updateContractorCompanySchema,
+  insertWorkerCertificationSchema, updateWorkerCertificationSchema,
+  insertCertificateOfInsuranceSchema, updateCertificateOfInsuranceSchema
 } from "@shared/schema";
 import type { AiFinding, User, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
@@ -971,6 +973,147 @@ export async function registerRoutes(
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
     const updated = await storage.updateContractorCompany(req.params.id, parsed.data);
     res.json(updated);
+  });
+
+  // ─── Worker Certifications (Phase 7B) ─────────────────────────────────────
+
+  app.get("/api/worker-certifications", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const { userId, certType } = req.query as { userId?: string; certType?: string };
+      const filters: { userId?: string; certType?: string } = {};
+      if (typeof userId === "string" && userId) filters.userId = userId;
+      if (typeof certType === "string" && certType) filters.certType = certType;
+      res.json(await storage.getWorkerCertifications(orgId, filters));
+    } catch {
+      res.status(500).json({ message: "Failed to fetch worker certifications" });
+    }
+  });
+
+  app.get("/api/worker-certifications/:id", async (req, res) => {
+    try {
+      const cert = await storage.getWorkerCertification(req.user!.organizationId, req.params.id);
+      if (!cert) return res.status(404).json({ message: "Worker certification not found" });
+      res.json(cert);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch worker certification" });
+    }
+  });
+
+  app.post("/api/worker-certifications", async (req, res) => {
+    try {
+      const parsed = insertWorkerCertificationSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      const targetUser = await storage.getUser(parsed.data.userId);
+      if (!targetUser) return res.status(400).json({ message: "User not found" });
+      if (targetUser.organizationId !== orgId) return res.status(403).json({ message: "Forbidden" });
+      const cert = await storage.createWorkerCertification(orgId, parsed.data);
+      res.status(201).json(cert);
+    } catch {
+      res.status(500).json({ message: "Failed to create worker certification" });
+    }
+  });
+
+  app.patch("/api/worker-certifications/:id", async (req, res) => {
+    try {
+      const parsed = updateWorkerCertificationSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      if (parsed.data.userId) {
+        const targetUser = await storage.getUser(parsed.data.userId);
+        if (!targetUser) return res.status(400).json({ message: "User not found" });
+        if (targetUser.organizationId !== orgId) return res.status(403).json({ message: "Forbidden" });
+      }
+      const updated = await storage.updateWorkerCertification(orgId, req.params.id, parsed.data);
+      if (!updated) return res.status(404).json({ message: "Worker certification not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update worker certification" });
+    }
+  });
+
+  app.delete("/api/worker-certifications/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteWorkerCertification(req.user!.organizationId, req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Worker certification not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete worker certification" });
+    }
+  });
+
+  // ─── Certificates of Insurance (Phase 7B) ─────────────────────────────────
+
+  app.get("/api/certificates-of-insurance", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const { tradeCompanyId, linkedOrganizationId, coverageType } = req.query as {
+        tradeCompanyId?: string; linkedOrganizationId?: string; coverageType?: string;
+      };
+      const filters: { tradeCompanyId?: string; linkedOrganizationId?: string; coverageType?: string } = {};
+      if (typeof tradeCompanyId === "string" && tradeCompanyId) filters.tradeCompanyId = tradeCompanyId;
+      if (typeof linkedOrganizationId === "string" && linkedOrganizationId) filters.linkedOrganizationId = linkedOrganizationId;
+      if (typeof coverageType === "string" && coverageType) filters.coverageType = coverageType;
+      res.json(await storage.getCertificatesOfInsurance(orgId, filters));
+    } catch {
+      res.status(500).json({ message: "Failed to fetch certificates of insurance" });
+    }
+  });
+
+  app.get("/api/certificates-of-insurance/:id", async (req, res) => {
+    try {
+      const coi = await storage.getCertificateOfInsurance(req.user!.organizationId, req.params.id);
+      if (!coi) return res.status(404).json({ message: "Certificate of insurance not found" });
+      res.json(coi);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch certificate of insurance" });
+    }
+  });
+
+  app.post("/api/certificates-of-insurance", async (req, res) => {
+    try {
+      const parsed = insertCertificateOfInsuranceSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      if (parsed.data.tradeCompanyId) {
+        const trade = await storage.getTrade(parsed.data.tradeCompanyId);
+        if (!trade) return res.status(400).json({ message: "Trade company not found" });
+        if (trade.organizationId !== orgId) return res.status(403).json({ message: "Forbidden" });
+      }
+      const coi = await storage.createCertificateOfInsurance(orgId, parsed.data);
+      res.status(201).json(coi);
+    } catch {
+      res.status(500).json({ message: "Failed to create certificate of insurance" });
+    }
+  });
+
+  app.patch("/api/certificates-of-insurance/:id", async (req, res) => {
+    try {
+      const parsed = updateCertificateOfInsuranceSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      if (parsed.data.tradeCompanyId) {
+        const trade = await storage.getTrade(parsed.data.tradeCompanyId);
+        if (!trade) return res.status(400).json({ message: "Trade company not found" });
+        if (trade.organizationId !== orgId) return res.status(403).json({ message: "Forbidden" });
+      }
+      const updated = await storage.updateCertificateOfInsurance(orgId, req.params.id, parsed.data);
+      if (!updated) return res.status(404).json({ message: "Certificate of insurance not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update certificate of insurance" });
+    }
+  });
+
+  app.delete("/api/certificates-of-insurance/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteCertificateOfInsurance(req.user!.organizationId, req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Certificate of insurance not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete certificate of insurance" });
+    }
   });
 
   // ─── AI Photo Analysis ──────────────────────────────────────────────────────
