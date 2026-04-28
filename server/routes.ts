@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, createNotificationForOrgAdmins } from "./storage";
 import bcrypt from "bcrypt";
 import { z } from "zod";
 import {
@@ -1038,6 +1038,19 @@ export async function registerRoutes(
       if (!targetUser) return res.status(400).json({ message: "User not found" });
       if (targetUser.organizationId !== orgId) return res.status(403).json({ message: "Forbidden" });
       const cert = await storage.createWorkerCertification(orgId, parsed.data);
+      if (cert.expiryDate) {
+        const days = Math.floor((new Date(cert.expiryDate).getTime() - Date.now()) / 86400000);
+        if (days <= 30) {
+          createNotificationForOrgAdmins(
+            orgId,
+            "cert_expiring",
+            "Worker Certification Expiring",
+            `${cert.certType} certification for worker expires in ${days} day(s)`,
+            "worker_certification",
+            cert.id,
+          ).catch(console.error);
+        }
+      }
       res.status(201).json(cert);
     } catch {
       res.status(500).json({ message: "Failed to create worker certification" });
@@ -1111,6 +1124,19 @@ export async function registerRoutes(
         if (trade.organizationId !== orgId) return res.status(403).json({ message: "Forbidden" });
       }
       const coi = await storage.createCertificateOfInsurance(orgId, parsed.data);
+      if (coi.expiryDate) {
+        const days = Math.floor((new Date(coi.expiryDate).getTime() - Date.now()) / 86400000);
+        if (days <= 30) {
+          createNotificationForOrgAdmins(
+            orgId,
+            "coi_expiring",
+            "Certificate of Insurance Expiring",
+            `COI for ${coi.companyName} expires in ${days} day(s)`,
+            "certificate_of_insurance",
+            coi.id,
+          ).catch(console.error);
+        }
+      }
       res.status(201).json(coi);
     } catch {
       res.status(500).json({ message: "Failed to create certificate of insurance" });
@@ -1184,6 +1210,14 @@ export async function registerRoutes(
         if (jobsite.organizationId !== orgId) return res.status(403).json({ message: "Forbidden" });
       }
       const incident = await storage.createOshaIncident(orgId, parsed.data);
+      createNotificationForOrgAdmins(
+        orgId,
+        "osha_incident_filed",
+        "New OSHA Incident Filed",
+        `A new ${incident.caseType} incident was filed for ${incident.employeeName}`,
+        "osha_incident",
+        incident.id,
+      ).catch(console.error);
       res.status(201).json(incident);
     } catch {
       res.status(500).json({ message: "Failed to create OSHA incident" });
@@ -1399,8 +1433,20 @@ export async function registerRoutes(
     try {
       const parsed = updateDeliveryStatusSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
-      const updated = await storage.updateDeliveryStatus(req.user!.organizationId, req.params.id, parsed.data.status);
+      const orgId = req.user!.organizationId;
+      const updated = await storage.updateDeliveryStatus(orgId, req.params.id, parsed.data.status);
       if (!updated) return res.status(404).json({ message: "Delivery request not found" });
+      if (updated.requestedBy && updated.requestedBy !== req.user!.id) {
+        storage.createNotification({
+          organizationId: orgId,
+          userId: updated.requestedBy,
+          type: "delivery_status_changed",
+          title: "Delivery Status Updated",
+          message: `Your delivery request status changed to ${parsed.data.status}`,
+          entityType: "delivery_request",
+          entityId: updated.id,
+        }).catch(console.error);
+      }
       res.json(updated);
     } catch {
       res.status(500).json({ message: "Failed to update delivery status" });
@@ -1701,6 +1747,130 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch {
       res.status(500).json({ message: "Failed to revoke portfolio share" });
+    }
+  });
+
+  // ─── Notifications (Phase 8) ────────────────────────────────────────────────
+
+  app.get("/api/notifications", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const userId = req.user!.id;
+      const unreadOnly = req.query.unreadOnly === "true";
+      const notifications = await storage.getNotifications(orgId, userId, { unreadOnly });
+      const unreadCount = await storage.getUnreadNotificationCount(orgId, userId);
+      res.json({ notifications, unreadCount });
+    } catch {
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  app.get("/api/notifications/count", async (req, res) => {
+    try {
+      const unreadCount = await storage.getUnreadNotificationCount(req.user!.organizationId, req.user!.id);
+      res.json({ unreadCount });
+    } catch {
+      res.status(500).json({ message: "Failed to fetch notification count" });
+    }
+  });
+
+  app.patch("/api/notifications/read-all", async (req, res) => {
+    try {
+      await storage.markAllNotificationsRead(req.user!.organizationId, req.user!.id);
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to mark all notifications read" });
+    }
+  });
+
+  app.post("/api/notifications/scan", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      let created = 0;
+      const now = Date.now();
+      const cutoff = now + 30 * 86400000;
+
+      const certs = await storage.getWorkerCertifications(orgId);
+      for (const cert of certs) {
+        if (!cert.expiryDate) continue;
+        const exp = new Date(cert.expiryDate).getTime();
+        if (isNaN(exp) || exp > cutoff) continue;
+        const existing = await storage.getNotificationByEntity(orgId, "cert_expiring", cert.id);
+        if (existing) continue;
+        const days = Math.floor((exp - now) / 86400000);
+        await createNotificationForOrgAdmins(
+          orgId,
+          "cert_expiring",
+          "Worker Certification Expiring",
+          `${cert.certType} certification for worker expires in ${days} day(s)`,
+          "worker_certification",
+          cert.id,
+        );
+        created++;
+      }
+
+      const cois = await storage.getCertificatesOfInsurance(orgId);
+      for (const coi of cois) {
+        if (!coi.expiryDate) continue;
+        const exp = new Date(coi.expiryDate).getTime();
+        if (isNaN(exp) || exp > cutoff) continue;
+        const existing = await storage.getNotificationByEntity(orgId, "coi_expiring", coi.id);
+        if (existing) continue;
+        const days = Math.floor((exp - now) / 86400000);
+        await createNotificationForOrgAdmins(
+          orgId,
+          "coi_expiring",
+          "Certificate of Insurance Expiring",
+          `COI for ${coi.companyName} expires in ${days} day(s)`,
+          "certificate_of_insurance",
+          coi.id,
+        );
+        created++;
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      const checkouts = await storage.getInventoryCheckouts(orgId, { open: true });
+      for (const co of checkouts) {
+        if (!co.expectedReturnDate || co.returnedAt) continue;
+        if (co.expectedReturnDate >= today) continue;
+        const existing = await storage.getNotificationByEntity(orgId, "inventory_overdue", co.inventoryItemId);
+        if (existing) continue;
+        const item = await storage.getInventoryItem(orgId, co.inventoryItemId);
+        const itemName = item?.name ?? "Inventory item";
+        await createNotificationForOrgAdmins(
+          orgId,
+          "inventory_overdue",
+          "Inventory Checkout Overdue",
+          `${itemName} was due back on ${co.expectedReturnDate}`,
+          "inventory_item",
+          co.inventoryItemId,
+        );
+        created++;
+      }
+
+      res.json({ scanned: true, created });
+    } catch {
+      res.status(500).json({ message: "Failed to scan for notifications" });
+    }
+  });
+
+  app.patch("/api/notifications/:id/read", async (req, res) => {
+    try {
+      const updated = await storage.markNotificationRead(req.user!.organizationId, req.user!.id, req.params.id);
+      if (!updated) return res.status(404).json({ message: "Notification not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to mark notification read" });
+    }
+  });
+
+  app.delete("/api/notifications/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteNotification(req.user!.organizationId, req.user!.id, req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Notification not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete notification" });
     }
   });
 
