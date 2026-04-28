@@ -122,7 +122,7 @@ export function calculateSafetyScores(data: InsertSafetyReport, settings: Safety
 // ─── Row mappers ──────────────────────────────────────────────────────────────
 
 function mapOrg(row: typeof t.organizations.$inferSelect): Organization {
-  return { id: row.id, name: row.name, logoUrl: row.logoUrl ?? undefined, status: row.status, createdAt: row.createdAt ?? undefined };
+  return { id: row.id, name: row.name, logoUrl: row.logoUrl ?? undefined, status: row.status, orgType: (row.orgType ?? "ssm_firm") as Organization["orgType"], createdAt: row.createdAt ?? undefined };
 }
 
 function mapUser(row: typeof t.users.$inferSelect): User {
@@ -1557,8 +1557,20 @@ export class DatabaseStorage implements IStorage {
   async updateContractorCompany(id: string, updates: UpdateContractorCompany): Promise<ContractorCompany | undefined> {
     const existing = await this.getContractorCompany(id);
     if (!existing) return undefined;
+    const set: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+    if (updates.name !== undefined) set.name = updates.name;
+    if (updates.tradeType !== undefined) set.tradeType = updates.tradeType ?? null;
+    if (updates.contactName !== undefined) set.contactName = updates.contactName ?? null;
+    if (updates.contactEmail !== undefined) set.contactEmail = updates.contactEmail ?? null;
+    if (updates.contactPhone !== undefined) set.contactPhone = updates.contactPhone ?? null;
+    if (updates.address !== undefined) set.address = updates.address ?? null;
+    if (updates.licenseNumber !== undefined) set.licenseNumber = updates.licenseNumber ?? null;
+    if (updates.insuranceCarrier !== undefined) set.insuranceCarrier = updates.insuranceCarrier ?? null;
+    if (updates.insuranceExpiry !== undefined) set.insuranceExpiry = updates.insuranceExpiry ?? null;
+    if (updates.notes !== undefined) set.notes = updates.notes ?? null;
+    if (updates.status !== undefined) set.status = updates.status;
     const result = await db.update(t.contractorCompanies)
-      .set({ ...updates, updatedAt: new Date().toISOString() })
+      .set(set)
       .where(eq(t.contractorCompanies.id, id))
       .returning();
     return result[0] as ContractorCompany | undefined;
