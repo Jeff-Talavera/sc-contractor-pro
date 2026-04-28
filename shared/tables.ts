@@ -357,3 +357,36 @@ export const contractorCompanies = pgTable("contractor_companies", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+
+// ─── Phase 7B: Worker Certifications & Certificates of Insurance ─────────────
+
+export const workerCertifications = pgTable("worker_certifications", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  certType: text("cert_type").notNull(),
+  certNumber: text("cert_number"),
+  issuingBody: text("issuing_body"),
+  issueDate: text("issue_date").notNull(),
+  expiryDate: text("expiry_date"),
+  documentUrl: text("document_url"),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const certificatesOfInsurance = pgTable("certificates_of_insurance", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  companyName: text("company_name").notNull(),
+  tradeCompanyId: text("trade_company_id"),
+  linkedOrganizationId: text("linked_organization_id"),
+  coverageType: text("coverage_type").notNull(),
+  insurer: text("insurer"),
+  policyNumber: text("policy_number"),
+  coverageLimit: text("coverage_limit"),
+  effectiveDate: text("effective_date"),
+  expiryDate: text("expiry_date"),
+  documentUrl: text("document_url"),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+});
