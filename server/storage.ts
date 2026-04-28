@@ -31,12 +31,14 @@ import type {
   InsertInventoryCheckout, CloseInventoryCheckout,
   InsertInventoryConditionReport,
   InsertInventoryServiceTicket, UpdateInventoryServiceTicket,
+  PortfolioShare, InsertPortfolioShare, VisibleSections, PortfolioSnapshot,
 } from "@shared/schema";
+import { PORTFOLIO_SECTIONS } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
 import { db } from "./db";
 import * as t from "@shared/tables";
-import { eq, and, gte, lte, inArray, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, isNull, desc } from "drizzle-orm";
 
 // ─── Drizzle insert/update row types ─────────────────────────────────────────
 
@@ -64,6 +66,7 @@ type InventoryItemRow = typeof t.inventoryItems.$inferInsert;
 type InventoryCheckoutRow = typeof t.inventoryCheckouts.$inferInsert;
 type InventoryConditionReportRow = typeof t.inventoryConditionReports.$inferInsert;
 type InventoryServiceTicketRow = typeof t.inventoryServiceTickets.$inferInsert;
+type PortfolioShareRow = typeof t.portfolioShares.$inferInsert;
 
 // ─── Scoring logic ────────────────────────────────────────────────────────────
 
@@ -778,6 +781,13 @@ export interface IStorage {
   getInventoryServiceTicket(orgId: string, id: string): Promise<InventoryServiceTicket | undefined>;
   createInventoryServiceTicket(orgId: string, data: InsertInventoryServiceTicket): Promise<InventoryServiceTicket>;
   updateInventoryServiceTicket(orgId: string, id: string, data: UpdateInventoryServiceTicket): Promise<InventoryServiceTicket | undefined>;
+
+  // ─── Portfolio Shares & Snapshot (Phase 7F) ───────────────────────────────
+  getPortfolioShares(orgId: string): Promise<PortfolioShare[]>;
+  getPortfolioShareByToken(token: string): Promise<PortfolioShare | undefined>;
+  createPortfolioShare(orgId: string, data: InsertPortfolioShare): Promise<PortfolioShare>;
+  revokePortfolioShare(orgId: string, id: string): Promise<PortfolioShare | undefined>;
+  getPortfolioSnapshot(orgId: string, visibleSections: VisibleSections): Promise<PortfolioSnapshot>;
 
   // ─── Super-admin methods ──────────────────────────────────────────────────
   adminListOrgs(): Promise<Organization[]>;
@@ -2460,6 +2470,155 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return rows[0] ? mapInventoryServiceTicket(rows[0]) : undefined;
   }
+
+  // ─── Portfolio Shares (Phase 7F) ──────────────────────────────────────────
+
+  async getPortfolioShares(orgId: string): Promise<PortfolioShare[]> {
+    const rows = await db.select().from(t.portfolioShares)
+      .where(eq(t.portfolioShares.organizationId, orgId))
+      .orderBy(desc(t.portfolioShares.createdAt));
+    return rows.map(mapPortfolioShare);
+  }
+
+  async getPortfolioShareByToken(token: string): Promise<PortfolioShare | undefined> {
+    const rows = await db.select().from(t.portfolioShares)
+      .where(eq(t.portfolioShares.token, token));
+    return rows[0] ? mapPortfolioShare(rows[0]) : undefined;
+  }
+
+  async createPortfolioShare(orgId: string, data: InsertPortfolioShare): Promise<PortfolioShare> {
+    const defaults: VisibleSections = {
+      trir: true, workerCerts: true, coi: true,
+      jobsites: true, oshaIncidents: true, inventory: true,
+    };
+    const incoming = (data.visibleSections ?? {}) as Partial<VisibleSections>;
+    const merged: VisibleSections = { ...defaults };
+    for (const section of PORTFOLIO_SECTIONS) {
+      if (incoming[section] !== undefined) merged[section] = incoming[section]!;
+    }
+    const row: PortfolioShareRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      token: randomUUID().replace(/-/g, ""),
+      expiresAt: data.expiresAt,
+      revokedAt: null,
+      visibleSections: JSON.stringify(merged),
+      createdBy: data.createdBy ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.portfolioShares).values(row).returning();
+    return mapPortfolioShare(rows[0]);
+  }
+
+  async revokePortfolioShare(orgId: string, id: string): Promise<PortfolioShare | undefined> {
+    const existing = await db.select().from(t.portfolioShares)
+      .where(and(eq(t.portfolioShares.id, id), eq(t.portfolioShares.organizationId, orgId)));
+    if (!existing[0]) return undefined;
+    const rows = await db.update(t.portfolioShares)
+      .set({ revokedAt: new Date().toISOString() })
+      .where(and(eq(t.portfolioShares.id, id), eq(t.portfolioShares.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapPortfolioShare(rows[0]) : undefined;
+  }
+
+  async getPortfolioSnapshot(orgId: string, visibleSections: VisibleSections): Promise<PortfolioSnapshot> {
+    const org = await this.getOrganization(orgId);
+    if (!org) throw new Error("Organization not found");
+
+    const snapshot: PortfolioSnapshot = {
+      org: { id: org.id, name: org.name, orgType: org.orgType ?? "ssm_firm", logoUrl: org.logoUrl },
+      generatedAt: new Date().toISOString(),
+      visibleSections,
+    };
+
+    if (visibleSections.trir) {
+      snapshot.trir = await this.computeTrir(orgId);
+    }
+
+    if (visibleSections.workerCerts) {
+      const certs = await this.getWorkerCertifications(orgId);
+      const summary = { total: certs.length, valid: 0, expiringSoon: 0, expired: 0, noExpiry: 0 };
+      for (const c of certs) {
+        const s = c.status ?? "no_expiry";
+        if (s === "valid") summary.valid++;
+        else if (s === "expiring_soon") summary.expiringSoon++;
+        else if (s === "expired") summary.expired++;
+        else summary.noExpiry++;
+      }
+      snapshot.workerCerts = summary;
+    }
+
+    if (visibleSections.coi) {
+      const cois = await this.getCertificatesOfInsurance(orgId);
+      snapshot.coi = cois.map(c => ({
+        id: c.id,
+        companyName: c.companyName,
+        coverageType: c.coverageType,
+        insurer: c.insurer ?? undefined,
+        expiryDate: c.expiryDate ?? undefined,
+        status: c.status ?? "no_expiry",
+      }));
+    }
+
+    if (visibleSections.jobsites) {
+      const jobsites = await this.getJobsitesByOrg(orgId);
+      snapshot.jobsites = jobsites.map(j => ({
+        id: j.id,
+        name: j.name,
+        address: j.address ?? undefined,
+        status: (j as any).status ?? "active",
+      }));
+    }
+
+    if (visibleSections.oshaIncidents) {
+      const incidents = await this.getOshaIncidents(orgId);
+      snapshot.oshaIncidents = incidents.map(i => ({
+        id: i.id,
+        incidentDate: i.incidentDate,
+        caseType: i.caseType,
+        recordableCase: i.recordableCase,
+      }));
+    }
+
+    if (visibleSections.inventory) {
+      const items = await this.getInventoryItems(orgId);
+      const checkedOut = await this.getInventoryCheckouts(orgId, { open: true });
+      snapshot.inventory = {
+        total: items.length,
+        checkedOut: checkedOut.length,
+        outOfService: items.filter(i => i.condition === "out_of_service").length,
+      };
+    }
+
+    return snapshot;
+  }
+}
+
+function mapPortfolioShare(row: typeof t.portfolioShares.$inferSelect): PortfolioShare {
+  let parsed: VisibleSections;
+  try {
+    const obj = JSON.parse(row.visibleSections) as Partial<VisibleSections>;
+    parsed = {
+      trir: obj.trir ?? true,
+      workerCerts: obj.workerCerts ?? true,
+      coi: obj.coi ?? true,
+      jobsites: obj.jobsites ?? true,
+      oshaIncidents: obj.oshaIncidents ?? true,
+      inventory: obj.inventory ?? true,
+    };
+  } catch {
+    parsed = { trir: true, workerCerts: true, coi: true, jobsites: true, oshaIncidents: true, inventory: true };
+  }
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    token: row.token,
+    expiresAt: row.expiresAt,
+    revokedAt: row.revokedAt ?? undefined,
+    visibleSections: parsed,
+    createdBy: row.createdBy ?? undefined,
+    createdAt: row.createdAt ?? "",
+  };
 }
 
 export const storage = new DatabaseStorage();
