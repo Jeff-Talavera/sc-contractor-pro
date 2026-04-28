@@ -32,6 +32,7 @@ import type {
   InsertInventoryConditionReport,
   InsertInventoryServiceTicket, UpdateInventoryServiceTicket,
   PortfolioShare, InsertPortfolioShare, VisibleSections, PortfolioSnapshot,
+  Notification, InsertNotification,
 } from "@shared/schema";
 import { PORTFOLIO_SECTIONS } from "@shared/schema";
 import { randomUUID } from "crypto";
@@ -67,6 +68,7 @@ type InventoryCheckoutRow = typeof t.inventoryCheckouts.$inferInsert;
 type InventoryConditionReportRow = typeof t.inventoryConditionReports.$inferInsert;
 type InventoryServiceTicketRow = typeof t.inventoryServiceTickets.$inferInsert;
 type PortfolioShareRow = typeof t.portfolioShares.$inferInsert;
+type NotificationRow = typeof t.notifications.$inferInsert;
 
 // ─── Scoring logic ────────────────────────────────────────────────────────────
 
@@ -788,6 +790,15 @@ export interface IStorage {
   createPortfolioShare(orgId: string, data: InsertPortfolioShare): Promise<PortfolioShare>;
   revokePortfolioShare(orgId: string, id: string): Promise<PortfolioShare | undefined>;
   getPortfolioSnapshot(orgId: string, visibleSections: VisibleSections): Promise<PortfolioSnapshot>;
+
+  // ─── Notifications (Phase 8) ──────────────────────────────────────────────
+  getNotifications(orgId: string, userId: string, filters?: { unreadOnly?: boolean }): Promise<Notification[]>;
+  getUnreadNotificationCount(orgId: string, userId: string): Promise<number>;
+  createNotification(data: InsertNotification): Promise<Notification>;
+  markNotificationRead(orgId: string, userId: string, id: string): Promise<Notification | undefined>;
+  markAllNotificationsRead(orgId: string, userId: string): Promise<void>;
+  deleteNotification(orgId: string, userId: string, id: string): Promise<boolean>;
+  getNotificationByEntity(orgId: string, type: string, entityId: string): Promise<Notification | undefined>;
 
   // ─── Super-admin methods ──────────────────────────────────────────────────
   adminListOrgs(): Promise<Organization[]>;
@@ -2591,6 +2602,144 @@ export class DatabaseStorage implements IStorage {
     }
 
     return snapshot;
+  }
+
+  // ─── Notifications (Phase 8) ──────────────────────────────────────────────
+
+  async getNotifications(orgId: string, userId: string, filters?: { unreadOnly?: boolean }): Promise<Notification[]> {
+    const conditions = [
+      eq(t.notifications.organizationId, orgId),
+      eq(t.notifications.userId, userId),
+    ];
+    if (filters?.unreadOnly) conditions.push(isNull(t.notifications.readAt));
+    const rows = await db.select().from(t.notifications)
+      .where(and(...conditions))
+      .orderBy(desc(t.notifications.createdAt))
+      .limit(50);
+    return rows.map(mapNotification);
+  }
+
+  async getUnreadNotificationCount(orgId: string, userId: string): Promise<number> {
+    const rows = await db.select().from(t.notifications)
+      .where(and(
+        eq(t.notifications.organizationId, orgId),
+        eq(t.notifications.userId, userId),
+        isNull(t.notifications.readAt),
+      ));
+    return rows.length;
+  }
+
+  async createNotification(data: InsertNotification): Promise<Notification> {
+    const row: NotificationRow = {
+      id: randomUUID(),
+      organizationId: data.organizationId,
+      userId: data.userId,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      entityType: data.entityType ?? null,
+      entityId: data.entityId ?? null,
+      readAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.notifications).values(row).returning();
+    return mapNotification(rows[0]);
+  }
+
+  async markNotificationRead(orgId: string, userId: string, id: string): Promise<Notification | undefined> {
+    const existing = await db.select().from(t.notifications).where(and(
+      eq(t.notifications.id, id),
+      eq(t.notifications.organizationId, orgId),
+      eq(t.notifications.userId, userId),
+    ));
+    if (!existing[0]) return undefined;
+    const rows = await db.update(t.notifications)
+      .set({ readAt: new Date().toISOString() })
+      .where(and(
+        eq(t.notifications.id, id),
+        eq(t.notifications.organizationId, orgId),
+        eq(t.notifications.userId, userId),
+      ))
+      .returning();
+    return rows[0] ? mapNotification(rows[0]) : undefined;
+  }
+
+  async markAllNotificationsRead(orgId: string, userId: string): Promise<void> {
+    await db.update(t.notifications)
+      .set({ readAt: new Date().toISOString() })
+      .where(and(
+        eq(t.notifications.organizationId, orgId),
+        eq(t.notifications.userId, userId),
+        isNull(t.notifications.readAt),
+      ));
+  }
+
+  async deleteNotification(orgId: string, userId: string, id: string): Promise<boolean> {
+    const result = await db.delete(t.notifications)
+      .where(and(
+        eq(t.notifications.id, id),
+        eq(t.notifications.organizationId, orgId),
+        eq(t.notifications.userId, userId),
+      ))
+      .returning();
+    return result.length > 0;
+  }
+
+  async getNotificationByEntity(orgId: string, type: string, entityId: string): Promise<Notification | undefined> {
+    const rows = await db.select().from(t.notifications)
+      .where(and(
+        eq(t.notifications.organizationId, orgId),
+        eq(t.notifications.type, type),
+        eq(t.notifications.entityId, entityId),
+      ))
+      .limit(1);
+    return rows[0] ? mapNotification(rows[0]) : undefined;
+  }
+}
+
+function mapNotification(row: typeof t.notifications.$inferSelect): Notification {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    userId: row.userId,
+    type: row.type,
+    title: row.title,
+    message: row.message,
+    entityType: row.entityType ?? null,
+    entityId: row.entityId ?? null,
+    readAt: row.readAt ?? null,
+    createdAt: row.createdAt,
+  };
+}
+
+export async function createNotificationForOrgAdmins(
+  orgId: string,
+  type: string,
+  title: string,
+  message: string,
+  entityType?: string,
+  entityId?: string,
+): Promise<void> {
+  try {
+    const users = await db.select().from(t.users).where(
+      and(
+        eq(t.users.organizationId, orgId),
+        inArray(t.users.role, ["Owner", "Admin"]),
+      ),
+    );
+    for (const user of users) {
+      await storage.createNotification({
+        organizationId: orgId,
+        userId: user.id,
+        type: type as InsertNotification["type"],
+        title,
+        message,
+        entityType: entityType ?? null,
+        entityId: entityId ?? null,
+      });
+    }
+  } catch (e) {
+    console.error("Failed to create notifications:", e);
   }
 }
 
