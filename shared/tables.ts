@@ -524,3 +524,16 @@ export const inventoryServiceTickets = pgTable("inventory_service_tickets", {
   resolutionNotes: text("resolution_notes"),
   createdAt: text("created_at"),
 });
+
+// ─── Phase 7F: Portfolio Shares ──────────────────────────────────────────────
+
+export const portfolioShares = pgTable("portfolio_shares", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  token: text("token").notNull().unique(),
+  expiresAt: text("expires_at").notNull(),
+  revokedAt: text("revoked_at"),
+  visibleSections: text("visible_sections").notNull(),
+  createdBy: text("created_by"),
+  createdAt: text("created_at"),
+});
