@@ -10,6 +10,7 @@ import type {
   ContractorCompany,
   WorkerCertification, CertificateOfInsurance,
   OshaIncident, WorkHoursLog, TrirResult,
+  Driver, DeliveryRequest, DeliveryNfcEvent,
   InsertClient, InsertJobsite, InsertInspection, InsertObservation,
   InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry,
   InsertSafetyReport, UpdateSafetySettings, UpdateOrganization,
@@ -21,7 +22,10 @@ import type {
   InsertWorkerCertification, UpdateWorkerCertification,
   InsertCertificateOfInsurance, UpdateCertificateOfInsurance,
   InsertOshaIncident, UpdateOshaIncident,
-  InsertWorkHoursLog, UpdateWorkHoursLog
+  InsertWorkHoursLog, UpdateWorkHoursLog,
+  InsertDriver, UpdateDriver,
+  InsertDeliveryRequest, UpdateDeliveryRequest,
+  InsertDeliveryNfcEvent
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
@@ -48,6 +52,9 @@ type WorkerCertificationRow = typeof t.workerCertifications.$inferInsert;
 type CertificateOfInsuranceRow = typeof t.certificatesOfInsurance.$inferInsert;
 type OshaIncidentRow = typeof t.oshaIncidents.$inferInsert;
 type WorkHoursLogRow = typeof t.workHoursLog.$inferInsert;
+type DriverRow = typeof t.drivers.$inferInsert;
+type DeliveryRequestRow = typeof t.deliveryRequests.$inferInsert;
+type DeliveryNfcEventRow = typeof t.deliveryNfcEvents.$inferInsert;
 
 // ─── Scoring logic ────────────────────────────────────────────────────────────
 
@@ -428,6 +435,49 @@ function mapWorkHoursLog(row: typeof t.workHoursLog.$inferSelect): WorkHoursLog 
   };
 }
 
+function mapDriver(row: typeof t.drivers.$inferSelect): Driver {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    userId: row.userId ?? undefined,
+    name: row.name,
+    licenseNumber: row.licenseNumber ?? undefined,
+    phone: row.phone ?? undefined,
+    status: row.status,
+    notes: row.notes ?? undefined,
+    createdAt: row.createdAt ?? "",
+  };
+}
+
+function mapDeliveryRequest(row: typeof t.deliveryRequests.$inferSelect): DeliveryRequest {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    jobsiteId: row.jobsiteId ?? undefined,
+    requestedBy: row.requestedBy ?? undefined,
+    approvedBy: row.approvedBy ?? undefined,
+    driverId: row.driverId ?? undefined,
+    description: row.description,
+    status: row.status,
+    scheduledDate: row.scheduledDate ?? undefined,
+    notes: row.notes ?? undefined,
+    createdAt: row.createdAt ?? "",
+  };
+}
+
+function mapDeliveryNfcEvent(row: typeof t.deliveryNfcEvents.$inferSelect): DeliveryNfcEvent {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    deliveryRequestId: row.deliveryRequestId,
+    eventType: row.eventType,
+    scannedBy: row.scannedBy ?? undefined,
+    jobsiteId: row.jobsiteId ?? undefined,
+    notes: row.notes ?? undefined,
+    createdAt: row.createdAt ?? "",
+  };
+}
+
 function mapCertificateOfInsurance(row: typeof t.certificatesOfInsurance.$inferSelect): CertificateOfInsurance {
   return {
     id: row.id, organizationId: row.organizationId,
@@ -611,6 +661,25 @@ export interface IStorage {
 
   // ─── TRIR (Phase 7C) ──────────────────────────────────────────────────────
   computeTrir(orgId: string): Promise<TrirResult>;
+
+  // ─── Drivers (Phase 7D) ───────────────────────────────────────────────────
+  getDrivers(orgId: string, filters?: { status?: string }): Promise<Driver[]>;
+  getDriver(orgId: string, id: string): Promise<Driver | undefined>;
+  createDriver(orgId: string, data: InsertDriver): Promise<Driver>;
+  updateDriver(orgId: string, id: string, data: UpdateDriver): Promise<Driver | undefined>;
+  deleteDriver(orgId: string, id: string): Promise<boolean>;
+
+  // ─── Delivery Requests (Phase 7D) ─────────────────────────────────────────
+  getDeliveryRequests(orgId: string, filters?: { jobsiteId?: string; driverId?: string; status?: string }): Promise<DeliveryRequest[]>;
+  getDeliveryRequest(orgId: string, id: string): Promise<DeliveryRequest | undefined>;
+  createDeliveryRequest(orgId: string, data: InsertDeliveryRequest): Promise<DeliveryRequest>;
+  updateDeliveryRequest(orgId: string, id: string, data: UpdateDeliveryRequest): Promise<DeliveryRequest | undefined>;
+  updateDeliveryStatus(orgId: string, id: string, status: string): Promise<DeliveryRequest | undefined>;
+  deleteDeliveryRequest(orgId: string, id: string): Promise<boolean>;
+
+  // ─── Delivery NFC Events (Phase 7D) ───────────────────────────────────────
+  getDeliveryNfcEvents(orgId: string, deliveryRequestId: string): Promise<DeliveryNfcEvent[]>;
+  createDeliveryNfcEvent(orgId: string, data: InsertDeliveryNfcEvent): Promise<DeliveryNfcEvent>;
 
   // ─── Super-admin methods ──────────────────────────────────────────────────
   adminListOrgs(): Promise<Organization[]>;
@@ -1923,6 +1992,156 @@ export class DatabaseStorage implements IStorage {
       periodStart: cutoff,
       periodEnd: new Date().toISOString().split("T")[0],
     };
+  }
+
+  // ─── Drivers (Phase 7D) ───────────────────────────────────────────────────
+
+  async getDrivers(orgId: string, filters?: { status?: string }): Promise<Driver[]> {
+    const conditions = [eq(t.drivers.organizationId, orgId)];
+    if (filters?.status) conditions.push(eq(t.drivers.status, filters.status));
+    const rows = await db.select().from(t.drivers).where(and(...conditions));
+    return rows.map(mapDriver);
+  }
+
+  async getDriver(orgId: string, id: string): Promise<Driver | undefined> {
+    const rows = await db.select().from(t.drivers)
+      .where(and(eq(t.drivers.id, id), eq(t.drivers.organizationId, orgId)));
+    return rows[0] ? mapDriver(rows[0]) : undefined;
+  }
+
+  async createDriver(orgId: string, data: InsertDriver): Promise<Driver> {
+    const row: DriverRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      userId: data.userId ?? null,
+      name: data.name,
+      licenseNumber: data.licenseNumber ?? null,
+      phone: data.phone ?? null,
+      status: data.status ?? "active",
+      notes: data.notes ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.drivers).values(row).returning();
+    return mapDriver(rows[0]);
+  }
+
+  async updateDriver(orgId: string, id: string, data: UpdateDriver): Promise<Driver | undefined> {
+    const existing = await this.getDriver(orgId, id);
+    if (!existing) return undefined;
+    const set: Partial<DriverRow> = {};
+    if (data.userId !== undefined) set.userId = data.userId ?? null;
+    if (data.name !== undefined) set.name = data.name;
+    if (data.licenseNumber !== undefined) set.licenseNumber = data.licenseNumber ?? null;
+    if (data.phone !== undefined) set.phone = data.phone ?? null;
+    if (data.status !== undefined) set.status = data.status;
+    if (data.notes !== undefined) set.notes = data.notes ?? null;
+    if (Object.keys(set).length === 0) return existing;
+    const rows = await db.update(t.drivers).set(set)
+      .where(and(eq(t.drivers.id, id), eq(t.drivers.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapDriver(rows[0]) : undefined;
+  }
+
+  async deleteDriver(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(t.drivers)
+      .where(and(eq(t.drivers.id, id), eq(t.drivers.organizationId, orgId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ─── Delivery Requests (Phase 7D) ─────────────────────────────────────────
+
+  async getDeliveryRequests(orgId: string, filters?: { jobsiteId?: string; driverId?: string; status?: string }): Promise<DeliveryRequest[]> {
+    const conditions = [eq(t.deliveryRequests.organizationId, orgId)];
+    if (filters?.jobsiteId) conditions.push(eq(t.deliveryRequests.jobsiteId, filters.jobsiteId));
+    if (filters?.driverId) conditions.push(eq(t.deliveryRequests.driverId, filters.driverId));
+    if (filters?.status) conditions.push(eq(t.deliveryRequests.status, filters.status));
+    const rows = await db.select().from(t.deliveryRequests).where(and(...conditions));
+    return rows.map(mapDeliveryRequest);
+  }
+
+  async getDeliveryRequest(orgId: string, id: string): Promise<DeliveryRequest | undefined> {
+    const rows = await db.select().from(t.deliveryRequests)
+      .where(and(eq(t.deliveryRequests.id, id), eq(t.deliveryRequests.organizationId, orgId)));
+    return rows[0] ? mapDeliveryRequest(rows[0]) : undefined;
+  }
+
+  async createDeliveryRequest(orgId: string, data: InsertDeliveryRequest): Promise<DeliveryRequest> {
+    const row: DeliveryRequestRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      jobsiteId: data.jobsiteId ?? null,
+      requestedBy: data.requestedBy ?? null,
+      approvedBy: data.approvedBy ?? null,
+      driverId: data.driverId ?? null,
+      description: data.description,
+      status: data.status ?? "requested",
+      scheduledDate: data.scheduledDate ?? null,
+      notes: data.notes ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.deliveryRequests).values(row).returning();
+    return mapDeliveryRequest(rows[0]);
+  }
+
+  async updateDeliveryRequest(orgId: string, id: string, data: UpdateDeliveryRequest): Promise<DeliveryRequest | undefined> {
+    const existing = await this.getDeliveryRequest(orgId, id);
+    if (!existing) return undefined;
+    const set: Partial<DeliveryRequestRow> = {};
+    if (data.jobsiteId !== undefined) set.jobsiteId = data.jobsiteId ?? null;
+    if (data.requestedBy !== undefined) set.requestedBy = data.requestedBy ?? null;
+    if (data.approvedBy !== undefined) set.approvedBy = data.approvedBy ?? null;
+    if (data.driverId !== undefined) set.driverId = data.driverId ?? null;
+    if (data.description !== undefined) set.description = data.description;
+    if (data.status !== undefined) set.status = data.status;
+    if (data.scheduledDate !== undefined) set.scheduledDate = data.scheduledDate ?? null;
+    if (data.notes !== undefined) set.notes = data.notes ?? null;
+    if (Object.keys(set).length === 0) return existing;
+    const rows = await db.update(t.deliveryRequests).set(set)
+      .where(and(eq(t.deliveryRequests.id, id), eq(t.deliveryRequests.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapDeliveryRequest(rows[0]) : undefined;
+  }
+
+  async updateDeliveryStatus(orgId: string, id: string, status: string): Promise<DeliveryRequest | undefined> {
+    const existing = await this.getDeliveryRequest(orgId, id);
+    if (!existing) return undefined;
+    const rows = await db.update(t.deliveryRequests).set({ status })
+      .where(and(eq(t.deliveryRequests.id, id), eq(t.deliveryRequests.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapDeliveryRequest(rows[0]) : undefined;
+  }
+
+  async deleteDeliveryRequest(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(t.deliveryRequests)
+      .where(and(eq(t.deliveryRequests.id, id), eq(t.deliveryRequests.organizationId, orgId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ─── Delivery NFC Events (Phase 7D) ───────────────────────────────────────
+
+  async getDeliveryNfcEvents(orgId: string, deliveryRequestId: string): Promise<DeliveryNfcEvent[]> {
+    const rows = await db.select().from(t.deliveryNfcEvents).where(and(
+      eq(t.deliveryNfcEvents.organizationId, orgId),
+      eq(t.deliveryNfcEvents.deliveryRequestId, deliveryRequestId),
+    ));
+    return rows.map(mapDeliveryNfcEvent);
+  }
+
+  async createDeliveryNfcEvent(orgId: string, data: InsertDeliveryNfcEvent): Promise<DeliveryNfcEvent> {
+    const row: DeliveryNfcEventRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      deliveryRequestId: data.deliveryRequestId,
+      eventType: data.eventType,
+      scannedBy: data.scannedBy ?? null,
+      jobsiteId: data.jobsiteId ?? null,
+      notes: data.notes ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.deliveryNfcEvents).values(row).returning();
+    return mapDeliveryNfcEvent(rows[0]);
   }
 }
 
