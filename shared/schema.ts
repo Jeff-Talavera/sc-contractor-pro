@@ -873,3 +873,107 @@ export interface TrirResult {
   periodStart: string;
   periodEnd: string;
 }
+
+// ─── Phase 7D: Drivers ───────────────────────────────────────────────────────
+
+export const DRIVER_STATUSES = ["active", "inactive"] as const;
+export type DriverStatus = typeof DRIVER_STATUSES[number];
+
+export interface Driver {
+  id: string;
+  organizationId: string;
+  userId?: string;
+  name: string;
+  licenseNumber?: string;
+  phone?: string;
+  status: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export const insertDriverSchema = z.object({
+  userId: z.string().optional(),
+  name: z.string().min(1, "Name is required"),
+  licenseNumber: z.string().optional(),
+  phone: z.string().optional(),
+  status: z.enum(DRIVER_STATUSES).optional().default("active"),
+  notes: z.string().optional(),
+});
+
+export const updateDriverSchema = insertDriverSchema.partial();
+
+export type InsertDriver = z.infer<typeof insertDriverSchema>;
+export type UpdateDriver = z.infer<typeof updateDriverSchema>;
+
+// ─── Phase 7D: Delivery Requests ─────────────────────────────────────────────
+
+export const DELIVERY_STATUSES = [
+  "requested",
+  "approved",
+  "dispatched",
+  "in_transit",
+  "arrived",
+  "departed",
+] as const;
+export type DeliveryStatus = typeof DELIVERY_STATUSES[number];
+
+export interface DeliveryRequest {
+  id: string;
+  organizationId: string;
+  jobsiteId?: string;
+  requestedBy?: string;
+  approvedBy?: string;
+  driverId?: string;
+  description: string;
+  status: string;
+  scheduledDate?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export const insertDeliveryRequestSchema = z.object({
+  jobsiteId: z.string().optional(),
+  requestedBy: z.string().optional(),
+  approvedBy: z.string().optional(),
+  driverId: z.string().optional(),
+  description: z.string().min(1, "Description is required"),
+  status: z.enum(DELIVERY_STATUSES).optional(),
+  scheduledDate: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const updateDeliveryRequestSchema = insertDeliveryRequestSchema.partial();
+
+export const updateDeliveryStatusSchema = z.object({
+  status: z.enum(DELIVERY_STATUSES),
+});
+
+export type InsertDeliveryRequest = z.infer<typeof insertDeliveryRequestSchema>;
+export type UpdateDeliveryRequest = z.infer<typeof updateDeliveryRequestSchema>;
+export type UpdateDeliveryStatus = z.infer<typeof updateDeliveryStatusSchema>;
+
+// ─── Phase 7D: Delivery NFC Events ───────────────────────────────────────────
+
+export const NFC_EVENT_TYPES = ["dispatched", "arrived", "departed"] as const;
+export type NfcEventType = typeof NFC_EVENT_TYPES[number];
+
+export interface DeliveryNfcEvent {
+  id: string;
+  organizationId: string;
+  deliveryRequestId: string;
+  eventType: string;
+  scannedBy?: string;
+  jobsiteId?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export const insertDeliveryNfcEventSchema = z.object({
+  deliveryRequestId: z.string().min(1, "Delivery request is required"),
+  eventType: z.enum(NFC_EVENT_TYPES),
+  scannedBy: z.string().optional(),
+  jobsiteId: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export type InsertDeliveryNfcEvent = z.infer<typeof insertDeliveryNfcEventSchema>;
