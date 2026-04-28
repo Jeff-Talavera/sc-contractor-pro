@@ -11,6 +11,7 @@ import type {
   WorkerCertification, CertificateOfInsurance,
   OshaIncident, WorkHoursLog, TrirResult,
   Driver, DeliveryRequest, DeliveryNfcEvent,
+  InventoryItem, InventoryCheckout, InventoryConditionReport, InventoryServiceTicket,
   InsertClient, InsertJobsite, InsertInspection, InsertObservation,
   InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry,
   InsertSafetyReport, UpdateSafetySettings, UpdateOrganization,
@@ -25,13 +26,17 @@ import type {
   InsertWorkHoursLog, UpdateWorkHoursLog,
   InsertDriver, UpdateDriver,
   InsertDeliveryRequest, UpdateDeliveryRequest,
-  InsertDeliveryNfcEvent
+  InsertDeliveryNfcEvent,
+  InsertInventoryItem, UpdateInventoryItem,
+  InsertInventoryCheckout, CloseInventoryCheckout,
+  InsertInventoryConditionReport,
+  InsertInventoryServiceTicket, UpdateInventoryServiceTicket,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
 import { db } from "./db";
 import * as t from "@shared/tables";
-import { eq, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, isNull } from "drizzle-orm";
 
 // ─── Drizzle insert/update row types ─────────────────────────────────────────
 
@@ -55,6 +60,10 @@ type WorkHoursLogRow = typeof t.workHoursLog.$inferInsert;
 type DriverRow = typeof t.drivers.$inferInsert;
 type DeliveryRequestRow = typeof t.deliveryRequests.$inferInsert;
 type DeliveryNfcEventRow = typeof t.deliveryNfcEvents.$inferInsert;
+type InventoryItemRow = typeof t.inventoryItems.$inferInsert;
+type InventoryCheckoutRow = typeof t.inventoryCheckouts.$inferInsert;
+type InventoryConditionReportRow = typeof t.inventoryConditionReports.$inferInsert;
+type InventoryServiceTicketRow = typeof t.inventoryServiceTickets.$inferInsert;
 
 // ─── Scoring logic ────────────────────────────────────────────────────────────
 
@@ -478,6 +487,71 @@ function mapDeliveryNfcEvent(row: typeof t.deliveryNfcEvents.$inferSelect): Deli
   };
 }
 
+function mapInventoryItem(row: typeof t.inventoryItems.$inferSelect): InventoryItem {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    name: row.name,
+    description: row.description ?? undefined,
+    category: row.category ?? undefined,
+    serialNumber: row.serialNumber ?? undefined,
+    assetTag: row.assetTag ?? undefined,
+    nfcTagId: row.nfcTagId ?? undefined,
+    condition: row.condition,
+    currentJobsiteId: row.currentJobsiteId ?? undefined,
+    assignedTo: row.assignedTo ?? undefined,
+    purchaseDate: row.purchaseDate ?? undefined,
+    purchasePrice: row.purchasePrice ?? undefined,
+    notes: row.notes ?? undefined,
+    createdAt: row.createdAt ?? "",
+  };
+}
+
+function mapInventoryCheckout(row: typeof t.inventoryCheckouts.$inferSelect): InventoryCheckout {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    inventoryItemId: row.inventoryItemId,
+    checkedOutBy: row.checkedOutBy ?? undefined,
+    jobsiteId: row.jobsiteId ?? undefined,
+    checkedOutAt: row.checkedOutAt,
+    expectedReturnDate: row.expectedReturnDate ?? undefined,
+    returnedAt: row.returnedAt ?? undefined,
+    returnCondition: row.returnCondition ?? undefined,
+    returnNotes: row.returnNotes ?? undefined,
+    createdAt: row.createdAt ?? "",
+  };
+}
+
+function mapInventoryConditionReport(row: typeof t.inventoryConditionReports.$inferSelect): InventoryConditionReport {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    inventoryItemId: row.inventoryItemId,
+    checkoutId: row.checkoutId ?? undefined,
+    reportedBy: row.reportedBy ?? undefined,
+    condition: row.condition,
+    notes: row.notes ?? undefined,
+    photoUrls: row.photoUrls ?? undefined,
+    createdAt: row.createdAt ?? "",
+  };
+}
+
+function mapInventoryServiceTicket(row: typeof t.inventoryServiceTickets.$inferSelect): InventoryServiceTicket {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    inventoryItemId: row.inventoryItemId,
+    reportedBy: row.reportedBy ?? undefined,
+    issueDescription: row.issueDescription,
+    status: row.status,
+    resolvedAt: row.resolvedAt ?? undefined,
+    resolvedBy: row.resolvedBy ?? undefined,
+    resolutionNotes: row.resolutionNotes ?? undefined,
+    createdAt: row.createdAt ?? "",
+  };
+}
+
 function mapCertificateOfInsurance(row: typeof t.certificatesOfInsurance.$inferSelect): CertificateOfInsurance {
   return {
     id: row.id, organizationId: row.organizationId,
@@ -680,6 +754,30 @@ export interface IStorage {
   // ─── Delivery NFC Events (Phase 7D) ───────────────────────────────────────
   getDeliveryNfcEvents(orgId: string, deliveryRequestId: string): Promise<DeliveryNfcEvent[]>;
   createDeliveryNfcEvent(orgId: string, data: InsertDeliveryNfcEvent): Promise<DeliveryNfcEvent>;
+
+  // ─── Inventory Items (Phase 7E) ───────────────────────────────────────────
+  getInventoryItems(orgId: string, filters?: { category?: string; condition?: string; currentJobsiteId?: string; assignedTo?: string }): Promise<InventoryItem[]>;
+  getInventoryItem(orgId: string, id: string): Promise<InventoryItem | undefined>;
+  getInventoryItemByNfcTag(orgId: string, nfcTagId: string): Promise<InventoryItem | undefined>;
+  createInventoryItem(orgId: string, data: InsertInventoryItem): Promise<InventoryItem>;
+  updateInventoryItem(orgId: string, id: string, data: UpdateInventoryItem): Promise<InventoryItem | undefined>;
+  deleteInventoryItem(orgId: string, id: string): Promise<boolean>;
+
+  // ─── Inventory Checkouts (Phase 7E) ───────────────────────────────────────
+  getInventoryCheckouts(orgId: string, filters?: { inventoryItemId?: string; jobsiteId?: string; open?: boolean }): Promise<InventoryCheckout[]>;
+  getInventoryCheckout(orgId: string, id: string): Promise<InventoryCheckout | undefined>;
+  createInventoryCheckout(orgId: string, data: InsertInventoryCheckout): Promise<InventoryCheckout>;
+  closeInventoryCheckout(orgId: string, id: string, data: CloseInventoryCheckout): Promise<InventoryCheckout | undefined>;
+
+  // ─── Inventory Condition Reports (Phase 7E) ───────────────────────────────
+  getInventoryConditionReports(orgId: string, inventoryItemId: string): Promise<InventoryConditionReport[]>;
+  createInventoryConditionReport(orgId: string, data: InsertInventoryConditionReport): Promise<InventoryConditionReport>;
+
+  // ─── Inventory Service Tickets (Phase 7E) ─────────────────────────────────
+  getInventoryServiceTickets(orgId: string, filters?: { inventoryItemId?: string; status?: string }): Promise<InventoryServiceTicket[]>;
+  getInventoryServiceTicket(orgId: string, id: string): Promise<InventoryServiceTicket | undefined>;
+  createInventoryServiceTicket(orgId: string, data: InsertInventoryServiceTicket): Promise<InventoryServiceTicket>;
+  updateInventoryServiceTicket(orgId: string, id: string, data: UpdateInventoryServiceTicket): Promise<InventoryServiceTicket | undefined>;
 
   // ─── Super-admin methods ──────────────────────────────────────────────────
   adminListOrgs(): Promise<Organization[]>;
@@ -2142,6 +2240,225 @@ export class DatabaseStorage implements IStorage {
     };
     const rows = await db.insert(t.deliveryNfcEvents).values(row).returning();
     return mapDeliveryNfcEvent(rows[0]);
+  }
+
+  // ─── Inventory Items (Phase 7E) ───────────────────────────────────────────
+
+  async getInventoryItems(orgId: string, filters?: { category?: string; condition?: string; currentJobsiteId?: string; assignedTo?: string }): Promise<InventoryItem[]> {
+    const conditions = [eq(t.inventoryItems.organizationId, orgId)];
+    if (filters?.category) conditions.push(eq(t.inventoryItems.category, filters.category));
+    if (filters?.condition) conditions.push(eq(t.inventoryItems.condition, filters.condition));
+    if (filters?.currentJobsiteId) conditions.push(eq(t.inventoryItems.currentJobsiteId, filters.currentJobsiteId));
+    if (filters?.assignedTo) conditions.push(eq(t.inventoryItems.assignedTo, filters.assignedTo));
+    const rows = await db.select().from(t.inventoryItems).where(and(...conditions));
+    return rows.map(mapInventoryItem);
+  }
+
+  async getInventoryItem(orgId: string, id: string): Promise<InventoryItem | undefined> {
+    const rows = await db.select().from(t.inventoryItems)
+      .where(and(eq(t.inventoryItems.id, id), eq(t.inventoryItems.organizationId, orgId)));
+    return rows[0] ? mapInventoryItem(rows[0]) : undefined;
+  }
+
+  async getInventoryItemByNfcTag(orgId: string, nfcTagId: string): Promise<InventoryItem | undefined> {
+    const rows = await db.select().from(t.inventoryItems)
+      .where(and(eq(t.inventoryItems.nfcTagId, nfcTagId), eq(t.inventoryItems.organizationId, orgId)));
+    return rows[0] ? mapInventoryItem(rows[0]) : undefined;
+  }
+
+  async createInventoryItem(orgId: string, data: InsertInventoryItem): Promise<InventoryItem> {
+    const row: InventoryItemRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      name: data.name,
+      description: data.description ?? null,
+      category: data.category ?? null,
+      serialNumber: data.serialNumber ?? null,
+      assetTag: data.assetTag ?? null,
+      nfcTagId: data.nfcTagId ?? null,
+      condition: data.condition ?? "good",
+      currentJobsiteId: data.currentJobsiteId ?? null,
+      assignedTo: data.assignedTo ?? null,
+      purchaseDate: data.purchaseDate ?? null,
+      purchasePrice: data.purchasePrice ?? null,
+      notes: data.notes ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.inventoryItems).values(row).returning();
+    return mapInventoryItem(rows[0]);
+  }
+
+  async updateInventoryItem(orgId: string, id: string, data: UpdateInventoryItem): Promise<InventoryItem | undefined> {
+    const existing = await this.getInventoryItem(orgId, id);
+    if (!existing) return undefined;
+    const set: Partial<InventoryItemRow> = {};
+    if (data.name !== undefined) set.name = data.name;
+    if (data.description !== undefined) set.description = data.description ?? null;
+    if (data.category !== undefined) set.category = data.category ?? null;
+    if (data.serialNumber !== undefined) set.serialNumber = data.serialNumber ?? null;
+    if (data.assetTag !== undefined) set.assetTag = data.assetTag ?? null;
+    if (data.nfcTagId !== undefined) set.nfcTagId = data.nfcTagId ?? null;
+    if (data.condition !== undefined) set.condition = data.condition;
+    if (data.currentJobsiteId !== undefined) set.currentJobsiteId = data.currentJobsiteId ?? null;
+    if (data.assignedTo !== undefined) set.assignedTo = data.assignedTo ?? null;
+    if (data.purchaseDate !== undefined) set.purchaseDate = data.purchaseDate ?? null;
+    if (data.purchasePrice !== undefined) set.purchasePrice = data.purchasePrice ?? null;
+    if (data.notes !== undefined) set.notes = data.notes ?? null;
+    if (Object.keys(set).length === 0) return existing;
+    const rows = await db.update(t.inventoryItems).set(set)
+      .where(and(eq(t.inventoryItems.id, id), eq(t.inventoryItems.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapInventoryItem(rows[0]) : undefined;
+  }
+
+  async deleteInventoryItem(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(t.inventoryItems)
+      .where(and(eq(t.inventoryItems.id, id), eq(t.inventoryItems.organizationId, orgId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ─── Inventory Checkouts (Phase 7E) ───────────────────────────────────────
+
+  async getInventoryCheckouts(orgId: string, filters?: { inventoryItemId?: string; jobsiteId?: string; open?: boolean }): Promise<InventoryCheckout[]> {
+    const conditions = [eq(t.inventoryCheckouts.organizationId, orgId)];
+    if (filters?.inventoryItemId) conditions.push(eq(t.inventoryCheckouts.inventoryItemId, filters.inventoryItemId));
+    if (filters?.jobsiteId) conditions.push(eq(t.inventoryCheckouts.jobsiteId, filters.jobsiteId));
+    if (filters?.open === true) conditions.push(isNull(t.inventoryCheckouts.returnedAt));
+    const rows = await db.select().from(t.inventoryCheckouts).where(and(...conditions));
+    return rows.map(mapInventoryCheckout);
+  }
+
+  async getInventoryCheckout(orgId: string, id: string): Promise<InventoryCheckout | undefined> {
+    const rows = await db.select().from(t.inventoryCheckouts)
+      .where(and(eq(t.inventoryCheckouts.id, id), eq(t.inventoryCheckouts.organizationId, orgId)));
+    return rows[0] ? mapInventoryCheckout(rows[0]) : undefined;
+  }
+
+  async createInventoryCheckout(orgId: string, data: InsertInventoryCheckout): Promise<InventoryCheckout> {
+    const now = new Date().toISOString();
+    const row: InventoryCheckoutRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      inventoryItemId: data.inventoryItemId,
+      checkedOutBy: data.checkedOutBy ?? null,
+      jobsiteId: data.jobsiteId ?? null,
+      checkedOutAt: now,
+      expectedReturnDate: data.expectedReturnDate ?? null,
+      returnedAt: null,
+      returnCondition: null,
+      returnNotes: null,
+      createdAt: now,
+    };
+    const rows = await db.insert(t.inventoryCheckouts).values(row).returning();
+    await db.update(t.inventoryItems)
+      .set({
+        currentJobsiteId: data.jobsiteId ?? null,
+        assignedTo: data.checkedOutBy ?? null,
+      })
+      .where(and(
+        eq(t.inventoryItems.id, data.inventoryItemId),
+        eq(t.inventoryItems.organizationId, orgId),
+      ));
+    return mapInventoryCheckout(rows[0]);
+  }
+
+  async closeInventoryCheckout(orgId: string, id: string, data: CloseInventoryCheckout): Promise<InventoryCheckout | undefined> {
+    const existing = await this.getInventoryCheckout(orgId, id);
+    if (!existing) return undefined;
+    const set: Partial<InventoryCheckoutRow> = {
+      returnedAt: data.returnedAt ?? new Date().toISOString(),
+    };
+    if (data.returnCondition !== undefined) set.returnCondition = data.returnCondition ?? null;
+    if (data.returnNotes !== undefined) set.returnNotes = data.returnNotes ?? null;
+    const rows = await db.update(t.inventoryCheckouts).set(set)
+      .where(and(eq(t.inventoryCheckouts.id, id), eq(t.inventoryCheckouts.organizationId, orgId)))
+      .returning();
+    if (!rows[0]) return undefined;
+    await db.update(t.inventoryItems)
+      .set({ currentJobsiteId: null, assignedTo: null })
+      .where(and(
+        eq(t.inventoryItems.id, existing.inventoryItemId),
+        eq(t.inventoryItems.organizationId, orgId),
+      ));
+    return mapInventoryCheckout(rows[0]);
+  }
+
+  // ─── Inventory Condition Reports (Phase 7E) ───────────────────────────────
+
+  async getInventoryConditionReports(orgId: string, inventoryItemId: string): Promise<InventoryConditionReport[]> {
+    const rows = await db.select().from(t.inventoryConditionReports).where(and(
+      eq(t.inventoryConditionReports.organizationId, orgId),
+      eq(t.inventoryConditionReports.inventoryItemId, inventoryItemId),
+    ));
+    return rows.map(mapInventoryConditionReport);
+  }
+
+  async createInventoryConditionReport(orgId: string, data: InsertInventoryConditionReport): Promise<InventoryConditionReport> {
+    const row: InventoryConditionReportRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      inventoryItemId: data.inventoryItemId,
+      checkoutId: data.checkoutId ?? null,
+      reportedBy: data.reportedBy ?? null,
+      condition: data.condition,
+      notes: data.notes ?? null,
+      photoUrls: data.photoUrls ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.inventoryConditionReports).values(row).returning();
+    return mapInventoryConditionReport(rows[0]);
+  }
+
+  // ─── Inventory Service Tickets (Phase 7E) ─────────────────────────────────
+
+  async getInventoryServiceTickets(orgId: string, filters?: { inventoryItemId?: string; status?: string }): Promise<InventoryServiceTicket[]> {
+    const conditions = [eq(t.inventoryServiceTickets.organizationId, orgId)];
+    if (filters?.inventoryItemId) conditions.push(eq(t.inventoryServiceTickets.inventoryItemId, filters.inventoryItemId));
+    if (filters?.status) conditions.push(eq(t.inventoryServiceTickets.status, filters.status));
+    const rows = await db.select().from(t.inventoryServiceTickets).where(and(...conditions));
+    return rows.map(mapInventoryServiceTicket);
+  }
+
+  async getInventoryServiceTicket(orgId: string, id: string): Promise<InventoryServiceTicket | undefined> {
+    const rows = await db.select().from(t.inventoryServiceTickets)
+      .where(and(eq(t.inventoryServiceTickets.id, id), eq(t.inventoryServiceTickets.organizationId, orgId)));
+    return rows[0] ? mapInventoryServiceTicket(rows[0]) : undefined;
+  }
+
+  async createInventoryServiceTicket(orgId: string, data: InsertInventoryServiceTicket): Promise<InventoryServiceTicket> {
+    const row: InventoryServiceTicketRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      inventoryItemId: data.inventoryItemId,
+      reportedBy: data.reportedBy ?? null,
+      issueDescription: data.issueDescription,
+      status: data.status ?? "open",
+      resolvedAt: data.resolvedAt ?? null,
+      resolvedBy: data.resolvedBy ?? null,
+      resolutionNotes: data.resolutionNotes ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.inventoryServiceTickets).values(row).returning();
+    return mapInventoryServiceTicket(rows[0]);
+  }
+
+  async updateInventoryServiceTicket(orgId: string, id: string, data: UpdateInventoryServiceTicket): Promise<InventoryServiceTicket | undefined> {
+    const existing = await this.getInventoryServiceTicket(orgId, id);
+    if (!existing) return undefined;
+    const set: Partial<InventoryServiceTicketRow> = {};
+    if (data.inventoryItemId !== undefined) set.inventoryItemId = data.inventoryItemId;
+    if (data.reportedBy !== undefined) set.reportedBy = data.reportedBy ?? null;
+    if (data.issueDescription !== undefined) set.issueDescription = data.issueDescription;
+    if (data.status !== undefined) set.status = data.status;
+    if (data.resolvedAt !== undefined) set.resolvedAt = data.resolvedAt ?? null;
+    if (data.resolvedBy !== undefined) set.resolvedBy = data.resolvedBy ?? null;
+    if (data.resolutionNotes !== undefined) set.resolutionNotes = data.resolutionNotes ?? null;
+    if (Object.keys(set).length === 0) return existing;
+    const rows = await db.update(t.inventoryServiceTickets).set(set)
+      .where(and(eq(t.inventoryServiceTickets.id, id), eq(t.inventoryServiceTickets.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapInventoryServiceTicket(rows[0]) : undefined;
   }
 }
 
