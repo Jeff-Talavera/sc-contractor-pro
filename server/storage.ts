@@ -9,6 +9,7 @@ import type {
   Contact, ContactAssociation, ContactAssociationEnriched, ContactWithAssociations,
   ContractorCompany,
   WorkerCertification, CertificateOfInsurance,
+  OshaIncident, WorkHoursLog, TrirResult,
   InsertClient, InsertJobsite, InsertInspection, InsertObservation,
   InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry,
   InsertSafetyReport, UpdateSafetySettings, UpdateOrganization,
@@ -18,7 +19,9 @@ import type {
   InsertContact, InsertContactAssociation,
   InsertContractorCompany, UpdateContractorCompany,
   InsertWorkerCertification, UpdateWorkerCertification,
-  InsertCertificateOfInsurance, UpdateCertificateOfInsurance
+  InsertCertificateOfInsurance, UpdateCertificateOfInsurance,
+  InsertOshaIncident, UpdateOshaIncident,
+  InsertWorkHoursLog, UpdateWorkHoursLog
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
@@ -43,6 +46,8 @@ type SafetySettingsRow = typeof t.safetyReportSettings.$inferInsert;
 type ContractorCompanyRow = typeof t.contractorCompanies.$inferInsert;
 type WorkerCertificationRow = typeof t.workerCertifications.$inferInsert;
 type CertificateOfInsuranceRow = typeof t.certificatesOfInsurance.$inferInsert;
+type OshaIncidentRow = typeof t.oshaIncidents.$inferInsert;
+type WorkHoursLogRow = typeof t.workHoursLog.$inferInsert;
 
 // ─── Scoring logic ────────────────────────────────────────────────────────────
 
@@ -385,6 +390,44 @@ function mapWorkerCertification(row: typeof t.workerCertifications.$inferSelect)
   };
 }
 
+function mapOshaIncident(row: typeof t.oshaIncidents.$inferSelect): OshaIncident {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    jobsiteId: row.jobsiteId ?? undefined,
+    incidentDate: row.incidentDate,
+    employeeName: row.employeeName,
+    jobTitle: row.jobTitle ?? undefined,
+    department: row.department ?? undefined,
+    incidentDescription: row.incidentDescription,
+    bodyPart: row.bodyPart ?? undefined,
+    injuryType: row.injuryType ?? undefined,
+    caseType: row.caseType,
+    daysAway: row.daysAway ?? undefined,
+    daysRestricted: row.daysRestricted ?? undefined,
+    isPrivacyCase: row.isPrivacyCase,
+    reportedBy: row.reportedBy ?? undefined,
+    witnessNames: row.witnessNames ?? undefined,
+    rootCause: row.rootCause ?? undefined,
+    correctiveActions: row.correctiveActions ?? undefined,
+    recordableCase: row.recordableCase,
+    createdAt: row.createdAt,
+  };
+}
+
+function mapWorkHoursLog(row: typeof t.workHoursLog.$inferSelect): WorkHoursLog {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    periodStart: row.periodStart,
+    periodEnd: row.periodEnd,
+    hoursWorked: row.hoursWorked,
+    employeeCount: row.employeeCount ?? undefined,
+    notes: row.notes ?? undefined,
+    createdAt: row.createdAt,
+  };
+}
+
 function mapCertificateOfInsurance(row: typeof t.certificatesOfInsurance.$inferSelect): CertificateOfInsurance {
   return {
     id: row.id, organizationId: row.organizationId,
@@ -551,6 +594,23 @@ export interface IStorage {
   createCertificateOfInsurance(orgId: string, data: InsertCertificateOfInsurance): Promise<CertificateOfInsurance>;
   updateCertificateOfInsurance(orgId: string, id: string, data: UpdateCertificateOfInsurance): Promise<CertificateOfInsurance | undefined>;
   deleteCertificateOfInsurance(orgId: string, id: string): Promise<boolean>;
+
+  // ─── OSHA Incidents (Phase 7C) ────────────────────────────────────────────
+  getOshaIncidents(orgId: string, filters?: { jobsiteId?: string; caseType?: string; recordableCase?: string }): Promise<OshaIncident[]>;
+  getOshaIncident(orgId: string, id: string): Promise<OshaIncident | undefined>;
+  createOshaIncident(orgId: string, data: InsertOshaIncident): Promise<OshaIncident>;
+  updateOshaIncident(orgId: string, id: string, data: UpdateOshaIncident): Promise<OshaIncident | undefined>;
+  deleteOshaIncident(orgId: string, id: string): Promise<boolean>;
+
+  // ─── Work Hours Log (Phase 7C) ────────────────────────────────────────────
+  getWorkHoursLog(orgId: string, filters?: { periodStart?: string; periodEnd?: string }): Promise<WorkHoursLog[]>;
+  getWorkHoursLogEntry(orgId: string, id: string): Promise<WorkHoursLog | undefined>;
+  createWorkHoursLogEntry(orgId: string, data: InsertWorkHoursLog): Promise<WorkHoursLog>;
+  updateWorkHoursLogEntry(orgId: string, id: string, data: UpdateWorkHoursLog): Promise<WorkHoursLog | undefined>;
+  deleteWorkHoursLogEntry(orgId: string, id: string): Promise<boolean>;
+
+  // ─── TRIR (Phase 7C) ──────────────────────────────────────────────────────
+  computeTrir(orgId: string): Promise<TrirResult>;
 
   // ─── Super-admin methods ──────────────────────────────────────────────────
   adminListOrgs(): Promise<Organization[]>;
@@ -1701,6 +1761,168 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(t.certificatesOfInsurance.id, id), eq(t.certificatesOfInsurance.organizationId, orgId)))
       .returning();
     return result.length > 0;
+  }
+
+  // ─── OSHA Incidents (Phase 7C) ────────────────────────────────────────────
+
+  async getOshaIncidents(orgId: string, filters?: { jobsiteId?: string; caseType?: string; recordableCase?: string }): Promise<OshaIncident[]> {
+    const conditions = [eq(t.oshaIncidents.organizationId, orgId)];
+    if (filters?.jobsiteId) conditions.push(eq(t.oshaIncidents.jobsiteId, filters.jobsiteId));
+    if (filters?.caseType) conditions.push(eq(t.oshaIncidents.caseType, filters.caseType));
+    if (filters?.recordableCase) conditions.push(eq(t.oshaIncidents.recordableCase, filters.recordableCase));
+    const rows = await db.select().from(t.oshaIncidents).where(and(...conditions));
+    return rows.map(mapOshaIncident);
+  }
+
+  async getOshaIncident(orgId: string, id: string): Promise<OshaIncident | undefined> {
+    const rows = await db.select().from(t.oshaIncidents)
+      .where(and(eq(t.oshaIncidents.id, id), eq(t.oshaIncidents.organizationId, orgId)));
+    return rows[0] ? mapOshaIncident(rows[0]) : undefined;
+  }
+
+  async createOshaIncident(orgId: string, data: InsertOshaIncident): Promise<OshaIncident> {
+    const row: OshaIncidentRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      jobsiteId: data.jobsiteId ?? null,
+      incidentDate: data.incidentDate,
+      employeeName: data.employeeName,
+      jobTitle: data.jobTitle ?? null,
+      department: data.department ?? null,
+      incidentDescription: data.incidentDescription,
+      bodyPart: data.bodyPart ?? null,
+      injuryType: data.injuryType ?? null,
+      caseType: data.caseType,
+      daysAway: data.daysAway ?? null,
+      daysRestricted: data.daysRestricted ?? null,
+      isPrivacyCase: data.isPrivacyCase ?? "false",
+      reportedBy: data.reportedBy ?? null,
+      witnessNames: data.witnessNames ?? null,
+      rootCause: data.rootCause ?? null,
+      correctiveActions: data.correctiveActions ?? null,
+      recordableCase: data.recordableCase ?? "true",
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.oshaIncidents).values(row).returning();
+    return mapOshaIncident(rows[0]);
+  }
+
+  async updateOshaIncident(orgId: string, id: string, data: UpdateOshaIncident): Promise<OshaIncident | undefined> {
+    const existing = await this.getOshaIncident(orgId, id);
+    if (!existing) return undefined;
+    const set: Partial<OshaIncidentRow> = {};
+    if (data.jobsiteId !== undefined) set.jobsiteId = data.jobsiteId ?? null;
+    if (data.incidentDate !== undefined) set.incidentDate = data.incidentDate;
+    if (data.employeeName !== undefined) set.employeeName = data.employeeName;
+    if (data.jobTitle !== undefined) set.jobTitle = data.jobTitle ?? null;
+    if (data.department !== undefined) set.department = data.department ?? null;
+    if (data.incidentDescription !== undefined) set.incidentDescription = data.incidentDescription;
+    if (data.bodyPart !== undefined) set.bodyPart = data.bodyPart ?? null;
+    if (data.injuryType !== undefined) set.injuryType = data.injuryType ?? null;
+    if (data.caseType !== undefined) set.caseType = data.caseType;
+    if (data.daysAway !== undefined) set.daysAway = data.daysAway ?? null;
+    if (data.daysRestricted !== undefined) set.daysRestricted = data.daysRestricted ?? null;
+    if (data.isPrivacyCase !== undefined) set.isPrivacyCase = data.isPrivacyCase;
+    if (data.reportedBy !== undefined) set.reportedBy = data.reportedBy ?? null;
+    if (data.witnessNames !== undefined) set.witnessNames = data.witnessNames ?? null;
+    if (data.rootCause !== undefined) set.rootCause = data.rootCause ?? null;
+    if (data.correctiveActions !== undefined) set.correctiveActions = data.correctiveActions ?? null;
+    if (data.recordableCase !== undefined) set.recordableCase = data.recordableCase;
+    if (Object.keys(set).length === 0) return existing;
+    const rows = await db.update(t.oshaIncidents).set(set)
+      .where(and(eq(t.oshaIncidents.id, id), eq(t.oshaIncidents.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapOshaIncident(rows[0]) : undefined;
+  }
+
+  async deleteOshaIncident(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(t.oshaIncidents)
+      .where(and(eq(t.oshaIncidents.id, id), eq(t.oshaIncidents.organizationId, orgId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ─── Work Hours Log (Phase 7C) ────────────────────────────────────────────
+
+  async getWorkHoursLog(orgId: string, filters?: { periodStart?: string; periodEnd?: string }): Promise<WorkHoursLog[]> {
+    const conditions = [eq(t.workHoursLog.organizationId, orgId)];
+    if (filters?.periodStart) conditions.push(gte(t.workHoursLog.periodStart, filters.periodStart));
+    if (filters?.periodEnd) conditions.push(lte(t.workHoursLog.periodEnd, filters.periodEnd));
+    const rows = await db.select().from(t.workHoursLog).where(and(...conditions));
+    return rows.map(mapWorkHoursLog);
+  }
+
+  async getWorkHoursLogEntry(orgId: string, id: string): Promise<WorkHoursLog | undefined> {
+    const rows = await db.select().from(t.workHoursLog)
+      .where(and(eq(t.workHoursLog.id, id), eq(t.workHoursLog.organizationId, orgId)));
+    return rows[0] ? mapWorkHoursLog(rows[0]) : undefined;
+  }
+
+  async createWorkHoursLogEntry(orgId: string, data: InsertWorkHoursLog): Promise<WorkHoursLog> {
+    const row: WorkHoursLogRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      periodStart: data.periodStart,
+      periodEnd: data.periodEnd,
+      hoursWorked: data.hoursWorked,
+      employeeCount: data.employeeCount ?? null,
+      notes: data.notes ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.workHoursLog).values(row).returning();
+    return mapWorkHoursLog(rows[0]);
+  }
+
+  async updateWorkHoursLogEntry(orgId: string, id: string, data: UpdateWorkHoursLog): Promise<WorkHoursLog | undefined> {
+    const existing = await this.getWorkHoursLogEntry(orgId, id);
+    if (!existing) return undefined;
+    const set: Partial<WorkHoursLogRow> = {};
+    if (data.periodStart !== undefined) set.periodStart = data.periodStart;
+    if (data.periodEnd !== undefined) set.periodEnd = data.periodEnd;
+    if (data.hoursWorked !== undefined) set.hoursWorked = data.hoursWorked;
+    if (data.employeeCount !== undefined) set.employeeCount = data.employeeCount ?? null;
+    if (data.notes !== undefined) set.notes = data.notes ?? null;
+    if (Object.keys(set).length === 0) return existing;
+    const rows = await db.update(t.workHoursLog).set(set)
+      .where(and(eq(t.workHoursLog.id, id), eq(t.workHoursLog.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapWorkHoursLog(rows[0]) : undefined;
+  }
+
+  async deleteWorkHoursLogEntry(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(t.workHoursLog)
+      .where(and(eq(t.workHoursLog.id, id), eq(t.workHoursLog.organizationId, orgId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ─── TRIR (Phase 7C) ──────────────────────────────────────────────────────
+
+  async computeTrir(orgId: string): Promise<TrirResult> {
+    const threeYearsAgo = new Date();
+    threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
+    const cutoff = threeYearsAgo.toISOString().split("T")[0];
+
+    const incidents = await db.select().from(t.oshaIncidents).where(
+      and(eq(t.oshaIncidents.organizationId, orgId), eq(t.oshaIncidents.recordableCase, "true"))
+    );
+    const recordableInPeriod = incidents.filter(i => i.incidentDate >= cutoff);
+
+    const hoursRows = await db.select().from(t.workHoursLog).where(
+      eq(t.workHoursLog.organizationId, orgId)
+    );
+    const hoursInPeriod = hoursRows.filter(r => r.periodStart >= cutoff);
+    const totalHours = hoursInPeriod.reduce((sum, r) => sum + parseFloat(r.hoursWorked || "0"), 0);
+
+    const trir = totalHours > 0 ? (recordableInPeriod.length * 200000) / totalHours : 0;
+
+    return {
+      trir: Math.round(trir * 100) / 100,
+      recordableCases: recordableInPeriod.length,
+      totalHours: Math.round(totalHours),
+      periodStart: cutoff,
+      periodEnd: new Date().toISOString().split("T")[0],
+    };
   }
 }
 
