@@ -9,7 +9,8 @@ import {
   updateInspectionReportSchema, insertSafetyReportSchema, updateSafetySettingsSchema, updateOrganizationSchema,
   insertIndependentContractorSchema, insertContractorAssignmentSchema,
   insertTradeCompanySchema, insertJobsiteTradeAssignmentSchema,
-  insertContactSchema, insertContactAssociationSchema
+  insertContactSchema, insertContactAssociationSchema,
+  insertContractorCompanySchema, updateContractorCompanySchema
 } from "@shared/schema";
 import type { AiFinding, User, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
@@ -931,6 +932,45 @@ export async function registerRoutes(
     const entityOrgId = await storage.getEntityOrgId(entityType, entityId);
     if (!entityOrgId || entityOrgId !== orgId) return res.status(403).json({ message: "Forbidden" });
     res.json(await storage.getContactsByEntity(entityType, entityId, orgId));
+  });
+
+  // ─── Contractor Companies (Phase 7A) ──────────────────────────────────────
+  // Global registry — any authenticated user can read/create.
+  // No org-scope on reads (global by design). Write access requires auth only.
+  // linkedOrganizationId is never set via this API — super-admin only operation.
+
+  app.get("/api/contractor-companies", async (req, res) => {
+    const search = typeof req.query.search === "string" ? req.query.search : undefined;
+    const companies = await storage.getContractorCompanies(search);
+    res.json(companies);
+  });
+
+  app.get("/api/contractor-companies/:id", async (req, res) => {
+    const company = await storage.getContractorCompany(req.params.id);
+    if (!company) return res.status(404).json({ message: "Contractor company not found" });
+    res.json(company);
+  });
+
+  app.post("/api/contractor-companies", async (req, res) => {
+    const parsed = insertContractorCompanySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    // Prevent duplicate names (case-insensitive check)
+    const existing = await storage.getContractorCompanies(parsed.data.name);
+    const duplicate = existing.find(
+      c => c.name.toLowerCase() === parsed.data.name.toLowerCase()
+    );
+    if (duplicate) return res.status(409).json({ message: "A company with this name already exists", existing: duplicate });
+    const company = await storage.createContractorCompany(parsed.data);
+    res.status(201).json(company);
+  });
+
+  app.patch("/api/contractor-companies/:id", async (req, res) => {
+    const company = await storage.getContractorCompany(req.params.id);
+    if (!company) return res.status(404).json({ message: "Contractor company not found" });
+    const parsed = updateContractorCompanySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const updated = await storage.updateContractorCompany(req.params.id, parsed.data);
+    res.json(updated);
   });
 
   // ─── AI Photo Analysis ──────────────────────────────────────────────────────
