@@ -14,7 +14,10 @@ import {
   insertWorkerCertificationSchema, updateWorkerCertificationSchema,
   insertCertificateOfInsuranceSchema, updateCertificateOfInsuranceSchema,
   insertOshaIncidentSchema, updateOshaIncidentSchema,
-  insertWorkHoursLogSchema, updateWorkHoursLogSchema
+  insertWorkHoursLogSchema, updateWorkHoursLogSchema,
+  insertDriverSchema, updateDriverSchema,
+  insertDeliveryRequestSchema, updateDeliveryRequestSchema, updateDeliveryStatusSchema,
+  insertDeliveryNfcEventSchema
 } from "@shared/schema";
 import type { AiFinding, User, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
@@ -1257,6 +1260,165 @@ export async function registerRoutes(
       res.json(result);
     } catch {
       res.status(500).json({ message: "Failed to compute TRIR" });
+    }
+  });
+
+  // ─── Drivers (Phase 7D) ───────────────────────────────────────────────────
+
+  app.get("/api/drivers", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const { status } = req.query as { status?: string };
+      const filters: { status?: string } = {};
+      if (typeof status === "string" && status) filters.status = status;
+      res.json(await storage.getDrivers(orgId, filters));
+    } catch {
+      res.status(500).json({ message: "Failed to fetch drivers" });
+    }
+  });
+
+  app.get("/api/drivers/:id", async (req, res) => {
+    try {
+      const driver = await storage.getDriver(req.user!.organizationId, req.params.id);
+      if (!driver) return res.status(404).json({ message: "Driver not found" });
+      res.json(driver);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch driver" });
+    }
+  });
+
+  app.post("/api/drivers", async (req, res) => {
+    try {
+      const parsed = insertDriverSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const driver = await storage.createDriver(req.user!.organizationId, parsed.data);
+      res.status(201).json(driver);
+    } catch {
+      res.status(500).json({ message: "Failed to create driver" });
+    }
+  });
+
+  app.patch("/api/drivers/:id", async (req, res) => {
+    try {
+      const parsed = updateDriverSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const updated = await storage.updateDriver(req.user!.organizationId, req.params.id, parsed.data);
+      if (!updated) return res.status(404).json({ message: "Driver not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update driver" });
+    }
+  });
+
+  app.delete("/api/drivers/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteDriver(req.user!.organizationId, req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Driver not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete driver" });
+    }
+  });
+
+  // ─── Delivery Requests (Phase 7D) ─────────────────────────────────────────
+
+  app.get("/api/delivery-requests", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const { jobsiteId, driverId, status } = req.query as {
+        jobsiteId?: string; driverId?: string; status?: string;
+      };
+      const filters: { jobsiteId?: string; driverId?: string; status?: string } = {};
+      if (typeof jobsiteId === "string" && jobsiteId) filters.jobsiteId = jobsiteId;
+      if (typeof driverId === "string" && driverId) filters.driverId = driverId;
+      if (typeof status === "string" && status) filters.status = status;
+      res.json(await storage.getDeliveryRequests(orgId, filters));
+    } catch {
+      res.status(500).json({ message: "Failed to fetch delivery requests" });
+    }
+  });
+
+  app.get("/api/delivery-requests/:id", async (req, res) => {
+    try {
+      const dr = await storage.getDeliveryRequest(req.user!.organizationId, req.params.id);
+      if (!dr) return res.status(404).json({ message: "Delivery request not found" });
+      res.json(dr);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch delivery request" });
+    }
+  });
+
+  app.post("/api/delivery-requests", async (req, res) => {
+    try {
+      const parsed = insertDeliveryRequestSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const dr = await storage.createDeliveryRequest(req.user!.organizationId, parsed.data);
+      res.status(201).json(dr);
+    } catch {
+      res.status(500).json({ message: "Failed to create delivery request" });
+    }
+  });
+
+  app.patch("/api/delivery-requests/:id", async (req, res) => {
+    try {
+      const parsed = updateDeliveryRequestSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const updated = await storage.updateDeliveryRequest(req.user!.organizationId, req.params.id, parsed.data);
+      if (!updated) return res.status(404).json({ message: "Delivery request not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update delivery request" });
+    }
+  });
+
+  app.patch("/api/delivery-requests/:id/status", async (req, res) => {
+    try {
+      const parsed = updateDeliveryStatusSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const updated = await storage.updateDeliveryStatus(req.user!.organizationId, req.params.id, parsed.data.status);
+      if (!updated) return res.status(404).json({ message: "Delivery request not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update delivery status" });
+    }
+  });
+
+  app.delete("/api/delivery-requests/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteDeliveryRequest(req.user!.organizationId, req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Delivery request not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete delivery request" });
+    }
+  });
+
+  // ─── Delivery NFC Events (Phase 7D) ───────────────────────────────────────
+
+  app.get("/api/delivery-nfc-events", async (req, res) => {
+    try {
+      const { deliveryRequestId } = req.query as { deliveryRequestId?: string };
+      if (typeof deliveryRequestId !== "string" || !deliveryRequestId) {
+        return res.status(400).json({ message: "deliveryRequestId is required" });
+      }
+      const events = await storage.getDeliveryNfcEvents(req.user!.organizationId, deliveryRequestId);
+      res.json(events);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch NFC events" });
+    }
+  });
+
+  app.post("/api/delivery-nfc-events", async (req, res) => {
+    try {
+      const parsed = insertDeliveryNfcEventSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      const dr = await storage.getDeliveryRequest(orgId, parsed.data.deliveryRequestId);
+      if (!dr) return res.status(404).json({ message: "Delivery request not found" });
+      const event = await storage.createDeliveryNfcEvent(orgId, parsed.data);
+      res.status(201).json(event);
+    } catch {
+      res.status(500).json({ message: "Failed to create NFC event" });
     }
   });
 
