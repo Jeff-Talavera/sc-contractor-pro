@@ -465,3 +465,62 @@ export const deliveryNfcEvents = pgTable("delivery_nfc_events", {
   notes: text("notes"),
   createdAt: text("created_at"),
 });
+
+// ─── Phase 7E: Inventory Items, Checkouts, Condition Reports & Service Tickets ─
+
+export const inventoryItems = pgTable("inventory_items", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  category: text("category"),
+  serialNumber: text("serial_number"),
+  assetTag: text("asset_tag"),
+  nfcTagId: text("nfc_tag_id"),
+  condition: text("condition").notNull().default("good"),
+  currentJobsiteId: text("current_jobsite_id"),
+  assignedTo: text("assigned_to"),
+  purchaseDate: text("purchase_date"),
+  purchasePrice: text("purchase_price"),
+  notes: text("notes"),
+  createdAt: text("created_at"),
+});
+
+export const inventoryCheckouts = pgTable("inventory_checkouts", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  inventoryItemId: text("inventory_item_id").notNull(),
+  checkedOutBy: text("checked_out_by"),
+  jobsiteId: text("jobsite_id"),
+  checkedOutAt: text("checked_out_at").notNull(),
+  expectedReturnDate: text("expected_return_date"),
+  returnedAt: text("returned_at"),
+  returnCondition: text("return_condition"),
+  returnNotes: text("return_notes"),
+  createdAt: text("created_at"),
+});
+
+export const inventoryConditionReports = pgTable("inventory_condition_reports", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  inventoryItemId: text("inventory_item_id").notNull(),
+  checkoutId: text("checkout_id"),
+  reportedBy: text("reported_by"),
+  condition: text("condition").notNull(),
+  notes: text("notes"),
+  photoUrls: text("photo_urls"),
+  createdAt: text("created_at"),
+});
+
+export const inventoryServiceTickets = pgTable("inventory_service_tickets", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  inventoryItemId: text("inventory_item_id").notNull(),
+  reportedBy: text("reported_by"),
+  issueDescription: text("issue_description").notNull(),
+  status: text("status").notNull().default("open"),
+  resolvedAt: text("resolved_at"),
+  resolvedBy: text("resolved_by"),
+  resolutionNotes: text("resolution_notes"),
+  createdAt: text("created_at"),
+});
