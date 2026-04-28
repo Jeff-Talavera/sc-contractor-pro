@@ -1167,3 +1167,39 @@ export interface PortfolioSnapshot {
   oshaIncidents?: Array<{ id: string; incidentDate: string; caseType: string; recordableCase: string }>;
   inventory?: { total: number; checkedOut: number; outOfService: number };
 }
+
+// ─── Phase 8: Notifications ──────────────────────────────────────────────────
+
+export const NOTIFICATION_TYPES = [
+  "cert_expiring",
+  "coi_expiring",
+  "osha_incident_filed",
+  "delivery_status_changed",
+  "inventory_overdue",
+] as const;
+export type NotificationType = typeof NOTIFICATION_TYPES[number];
+
+export interface Notification {
+  id: string;
+  organizationId: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  entityType?: string | null;
+  entityId?: string | null;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+export const insertNotificationSchema = z.object({
+  organizationId: z.string().min(1, "Organization is required"),
+  userId: z.string().min(1, "User is required"),
+  type: z.enum(NOTIFICATION_TYPES),
+  title: z.string().min(1, "Title is required"),
+  message: z.string().min(1, "Message is required"),
+  entityType: z.string().optional().nullable(),
+  entityId: z.string().optional().nullable(),
+});
+
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;

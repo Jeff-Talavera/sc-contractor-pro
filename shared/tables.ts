@@ -537,3 +537,18 @@ export const portfolioShares = pgTable("portfolio_shares", {
   createdBy: text("created_by"),
   createdAt: text("created_at"),
 });
+
+// ─── Phase 8: Notifications ──────────────────────────────────────────────────
+
+export const notifications = pgTable("notifications", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  userId: text("user_id").notNull(),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  entityType: text("entity_type"),
+  entityId: text("entity_id"),
+  readAt: text("read_at"),
+  createdAt: text("created_at").notNull(),
+});
