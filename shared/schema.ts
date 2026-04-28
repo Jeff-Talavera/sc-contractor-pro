@@ -5,6 +5,7 @@ export interface Organization {
   name: string;
   logoUrl?: string;
   status: string;
+  orgType: "ssm_firm" | "subcontractor" | "general_contractor";
   createdAt?: string;
 }
 
@@ -609,3 +610,61 @@ export type InsertIndependentContractor = z.infer<typeof insertIndependentContra
 export type InsertContractorAssignment = z.infer<typeof insertContractorAssignmentSchema>;
 export type InsertTradeCompany = z.infer<typeof insertTradeCompanySchema>;
 export type InsertJobsiteTradeAssignment = z.infer<typeof insertJobsiteTradeAssignmentSchema>;
+
+// ─── Phase 7A: Contractor Company Registry ───────────────────────────────────
+
+export const ORG_TYPES = [
+  "ssm_firm",
+  "subcontractor",
+  "general_contractor",
+] as const;
+export type OrgType = typeof ORG_TYPES[number];
+
+export interface ContractorCompany {
+  id: string;
+  name: string;
+  tradeType?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  address?: string;
+  licenseNumber?: string;
+  insuranceCarrier?: string;
+  insuranceExpiry?: string;
+  notes?: string;
+  status: "active" | "inactive";
+  linkedOrganizationId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const insertContractorCompanySchema = z.object({
+  name: z.string().min(1, "Company name is required"),
+  tradeType: z.string().optional(),
+  contactName: z.string().optional(),
+  contactEmail: z.string().email("Valid email required").optional().or(z.literal("")),
+  contactPhone: z.string().optional(),
+  address: z.string().optional(),
+  licenseNumber: z.string().optional(),
+  insuranceCarrier: z.string().optional(),
+  insuranceExpiry: z.string().optional(),
+  notes: z.string().optional(),
+  status: z.enum(["active", "inactive"]).default("active"),
+});
+
+export const updateContractorCompanySchema = z.object({
+  name: z.string().min(1).optional(),
+  tradeType: z.string().optional(),
+  contactName: z.string().optional(),
+  contactEmail: z.string().email().optional().or(z.literal("")),
+  contactPhone: z.string().optional(),
+  address: z.string().optional(),
+  licenseNumber: z.string().optional(),
+  insuranceCarrier: z.string().optional(),
+  insuranceExpiry: z.string().optional(),
+  notes: z.string().optional(),
+  status: z.enum(["active", "inactive"]).optional(),
+});
+
+export type InsertContractorCompany = z.infer<typeof insertContractorCompanySchema>;
+export type UpdateContractorCompany = z.infer<typeof updateContractorCompanySchema>;
