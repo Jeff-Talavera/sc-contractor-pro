@@ -779,3 +779,97 @@ export const updateCertificateOfInsuranceSchema = insertCertificateOfInsuranceSc
 
 export type InsertCertificateOfInsurance = z.infer<typeof insertCertificateOfInsuranceSchema>;
 export type UpdateCertificateOfInsurance = z.infer<typeof updateCertificateOfInsuranceSchema>;
+
+// ─── Phase 7C: OSHA Incidents ────────────────────────────────────────────────
+
+export const OSHA_CASE_TYPES = [
+  "death",
+  "days_away",
+  "restricted_transfer",
+  "other_recordable",
+] as const;
+export type OshaCaseType = typeof OSHA_CASE_TYPES[number];
+
+export interface OshaIncident {
+  id: string;
+  organizationId: string;
+  jobsiteId?: string;
+  incidentDate: string;
+  employeeName: string;
+  jobTitle?: string;
+  department?: string;
+  incidentDescription: string;
+  bodyPart?: string;
+  injuryType?: string;
+  caseType: string;
+  daysAway?: string;
+  daysRestricted?: string;
+  isPrivacyCase: string;
+  reportedBy?: string;
+  witnessNames?: string;
+  rootCause?: string;
+  correctiveActions?: string;
+  recordableCase: string;
+  createdAt: string;
+}
+
+export const insertOshaIncidentSchema = z.object({
+  jobsiteId: z.string().optional(),
+  incidentDate: z.string().min(1, "Incident date is required"),
+  employeeName: z.string().min(1, "Employee name is required"),
+  jobTitle: z.string().optional(),
+  department: z.string().optional(),
+  incidentDescription: z.string().min(1, "Incident description is required"),
+  bodyPart: z.string().optional(),
+  injuryType: z.string().optional(),
+  caseType: z.enum(OSHA_CASE_TYPES),
+  daysAway: z.string().optional(),
+  daysRestricted: z.string().optional(),
+  isPrivacyCase: z.string().optional().default("false"),
+  reportedBy: z.string().optional(),
+  witnessNames: z.string().optional(),
+  rootCause: z.string().optional(),
+  correctiveActions: z.string().optional(),
+  recordableCase: z.string().optional().default("true"),
+});
+
+export const updateOshaIncidentSchema = insertOshaIncidentSchema.partial();
+
+export type InsertOshaIncident = z.infer<typeof insertOshaIncidentSchema>;
+export type UpdateOshaIncident = z.infer<typeof updateOshaIncidentSchema>;
+
+// ─── Phase 7C: Work Hours Log ────────────────────────────────────────────────
+
+export interface WorkHoursLog {
+  id: string;
+  organizationId: string;
+  periodStart: string;
+  periodEnd: string;
+  hoursWorked: string;
+  employeeCount?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export const insertWorkHoursLogSchema = z.object({
+  periodStart: z.string().min(1, "Period start is required"),
+  periodEnd: z.string().min(1, "Period end is required"),
+  hoursWorked: z.string().min(1, "Hours worked is required"),
+  employeeCount: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const updateWorkHoursLogSchema = insertWorkHoursLogSchema.partial();
+
+export type InsertWorkHoursLog = z.infer<typeof insertWorkHoursLogSchema>;
+export type UpdateWorkHoursLog = z.infer<typeof updateWorkHoursLogSchema>;
+
+// ─── Phase 7C: TRIR Result ───────────────────────────────────────────────────
+
+export interface TrirResult {
+  trir: number;
+  recordableCases: number;
+  totalHours: number;
+  periodStart: string;
+  periodEnd: string;
+}
