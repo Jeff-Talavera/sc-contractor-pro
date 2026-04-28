@@ -8,6 +8,9 @@ export const organizations = pgTable("organizations", {
   name: text("name").notNull(),
   logoUrl: text("logo_url"),
   status: text("status").notNull().default("active"),
+  // 'ssm_firm' | 'subcontractor' | 'general_contractor'
+  // All existing orgs default to 'ssm_firm' — correct for current user base.
+  orgType: text("org_type").notNull().default("ssm_firm"),
   createdAt: text("created_at"),
 });
 
@@ -328,4 +331,29 @@ export const contactAssociations = pgTable("contact_associations", {
   entityType: text("entity_type").notNull(),
   entityId: text("entity_id").notNull(),
   relationship: text("relationship"),
+});
+
+// ─── Phase 7A: Contractor Company Registry ───────────────────────────────────
+// Global registry — not scoped to any single org row.
+// Any authenticated user can search/create companies.
+// Portals are fully isolated (Model A) — no cross-org data access in MVP.
+// linkedOrganizationId: set only when this company becomes a full platform tenant.
+export const contractorCompanies = pgTable("contractor_companies", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  tradeType: text("trade_type"),
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  address: text("address"),
+  licenseNumber: text("license_number"),
+  insuranceCarrier: text("insurance_carrier"),
+  insuranceExpiry: text("insurance_expiry"),
+  notes: text("notes"),
+  status: text("status").notNull().default("active"),
+  // Upgrade path: when this company becomes a paying tenant, link their org here.
+  // Never overwrite once set.
+  linkedOrganizationId: text("linked_organization_id").references(() => organizations.id),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
