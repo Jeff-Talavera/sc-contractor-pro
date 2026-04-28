@@ -22,7 +22,9 @@ import {
   insertInventoryCheckoutSchema, closeInventoryCheckoutSchema,
   insertInventoryConditionReportSchema,
   insertInventoryServiceTicketSchema, updateInventoryServiceTicketSchema,
+  insertPortfolioShareSchema,
 } from "@shared/schema";
+import type { VisibleSections } from "@shared/schema";
 import type { AiFinding, User, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
 declare module "express-session" {
@@ -112,6 +114,24 @@ export async function registerRoutes(
     req.session.destroy(() => {
       res.json({ success: true });
     });
+  });
+
+  // ─── Public Portfolio Share Route (Phase 7F) ───────────────────────────────
+  // Registered BEFORE the global /api requireAuth so unauthenticated visitors
+  // can view a shared portfolio via the token. Token is the only credential.
+
+  app.get("/api/public/portfolio/:token", async (req, res) => {
+    try {
+      const share = await storage.getPortfolioShareByToken(req.params.token);
+      if (!share) return res.status(404).json({ error: "Share not found" });
+      if (share.revokedAt) return res.status(410).json({ error: "This link has been revoked" });
+      const now = new Date().toISOString();
+      if (share.expiresAt < now) return res.status(410).json({ error: "This link has expired" });
+      const snapshot = await storage.getPortfolioSnapshot(share.organizationId, share.visibleSections);
+      res.json(snapshot);
+    } catch {
+      res.status(500).json({ message: "Failed to load shared portfolio" });
+    }
   });
 
   // ─── Global auth guard for all remaining /api/* routes ─────────────────────
@@ -1635,6 +1655,52 @@ export async function registerRoutes(
       res.json(updated);
     } catch {
       res.status(500).json({ message: "Failed to update service ticket" });
+    }
+  });
+
+  // ─── Portfolio (Phase 7F) ───────────────────────────────────────────────────
+
+  app.get("/api/portfolio", async (req, res) => {
+    try {
+      const allSectionsTrue: VisibleSections = {
+        trir: true, workerCerts: true, coi: true,
+        jobsites: true, oshaIncidents: true, inventory: true,
+      };
+      const snapshot = await storage.getPortfolioSnapshot(req.user!.organizationId, allSectionsTrue);
+      res.json(snapshot);
+    } catch {
+      res.status(500).json({ message: "Failed to load portfolio" });
+    }
+  });
+
+  app.get("/api/portfolio-shares", async (req, res) => {
+    try {
+      const shares = await storage.getPortfolioShares(req.user!.organizationId);
+      res.json(shares);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch portfolio shares" });
+    }
+  });
+
+  app.post("/api/portfolio-shares", async (req, res) => {
+    try {
+      const parsed = insertPortfolioShareSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const data = { ...parsed.data, createdBy: parsed.data.createdBy ?? req.user!.id };
+      const share = await storage.createPortfolioShare(req.user!.organizationId, data);
+      res.status(201).json({ ...share, shareUrl: `/api/public/portfolio/${share.token}` });
+    } catch {
+      res.status(500).json({ message: "Failed to create portfolio share" });
+    }
+  });
+
+  app.delete("/api/portfolio-shares/:id", async (req, res) => {
+    try {
+      const revoked = await storage.revokePortfolioShare(req.user!.organizationId, req.params.id);
+      if (!revoked) return res.status(404).json({ message: "Portfolio share not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to revoke portfolio share" });
     }
   });
 
