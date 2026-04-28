@@ -390,3 +390,39 @@ export const certificatesOfInsurance = pgTable("certificates_of_insurance", {
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
 });
+
+// ─── Phase 7C: OSHA Incidents & Work Hours Log ───────────────────────────────
+
+export const oshaIncidents = pgTable("osha_incidents", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  jobsiteId: text("jobsite_id"),
+  incidentDate: text("incident_date").notNull(),
+  employeeName: text("employee_name").notNull(),
+  jobTitle: text("job_title"),
+  department: text("department"),
+  incidentDescription: text("incident_description").notNull(),
+  bodyPart: text("body_part"),
+  injuryType: text("injury_type"),
+  caseType: text("case_type").notNull(),
+  daysAway: text("days_away"),
+  daysRestricted: text("days_restricted"),
+  isPrivacyCase: text("is_privacy_case").notNull().default("false"),
+  reportedBy: text("reported_by"),
+  witnessNames: text("witness_names"),
+  rootCause: text("root_cause"),
+  correctiveActions: text("corrective_actions"),
+  recordableCase: text("recordable_case").notNull().default("true"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const workHoursLog = pgTable("work_hours_log", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  periodStart: text("period_start").notNull(),
+  periodEnd: text("period_end").notNull(),
+  hoursWorked: text("hours_worked").notNull(),
+  employeeCount: text("employee_count"),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+});
