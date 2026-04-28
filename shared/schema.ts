@@ -977,3 +977,156 @@ export const insertDeliveryNfcEventSchema = z.object({
 });
 
 export type InsertDeliveryNfcEvent = z.infer<typeof insertDeliveryNfcEventSchema>;
+
+// ─── Phase 7E: Inventory Items ───────────────────────────────────────────────
+
+export const INVENTORY_CONDITIONS = [
+  "new",
+  "good",
+  "fair",
+  "poor",
+  "out_of_service",
+] as const;
+export type InventoryCondition = typeof INVENTORY_CONDITIONS[number];
+
+export const INVENTORY_CATEGORIES = [
+  "power_tool",
+  "hand_tool",
+  "ppe",
+  "equipment",
+  "other",
+] as const;
+export type InventoryCategory = typeof INVENTORY_CATEGORIES[number];
+
+export interface InventoryItem {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  category?: string;
+  serialNumber?: string;
+  assetTag?: string;
+  nfcTagId?: string;
+  condition: string;
+  currentJobsiteId?: string;
+  assignedTo?: string;
+  purchaseDate?: string;
+  purchasePrice?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export const insertInventoryItemSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  description: z.string().optional(),
+  category: z.enum(INVENTORY_CATEGORIES).optional(),
+  serialNumber: z.string().optional(),
+  assetTag: z.string().optional(),
+  nfcTagId: z.string().optional(),
+  condition: z.enum(INVENTORY_CONDITIONS).optional().default("good"),
+  currentJobsiteId: z.string().optional(),
+  assignedTo: z.string().optional(),
+  purchaseDate: z.string().optional(),
+  purchasePrice: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const updateInventoryItemSchema = insertInventoryItemSchema.partial();
+
+export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
+export type UpdateInventoryItem = z.infer<typeof updateInventoryItemSchema>;
+
+// ─── Phase 7E: Inventory Checkouts ───────────────────────────────────────────
+
+export interface InventoryCheckout {
+  id: string;
+  organizationId: string;
+  inventoryItemId: string;
+  checkedOutBy?: string;
+  jobsiteId?: string;
+  checkedOutAt: string;
+  expectedReturnDate?: string;
+  returnedAt?: string;
+  returnCondition?: string;
+  returnNotes?: string;
+  createdAt: string;
+}
+
+export const insertInventoryCheckoutSchema = z.object({
+  inventoryItemId: z.string().min(1, "Inventory item is required"),
+  checkedOutBy: z.string().optional(),
+  jobsiteId: z.string().optional(),
+  expectedReturnDate: z.string().optional(),
+});
+
+export const closeInventoryCheckoutSchema = z.object({
+  returnedAt: z.string().optional(),
+  returnCondition: z.enum(INVENTORY_CONDITIONS).optional(),
+  returnNotes: z.string().optional(),
+});
+
+export type InsertInventoryCheckout = z.infer<typeof insertInventoryCheckoutSchema>;
+export type CloseInventoryCheckout = z.infer<typeof closeInventoryCheckoutSchema>;
+
+// ─── Phase 7E: Inventory Condition Reports ───────────────────────────────────
+
+export interface InventoryConditionReport {
+  id: string;
+  organizationId: string;
+  inventoryItemId: string;
+  checkoutId?: string;
+  reportedBy?: string;
+  condition: string;
+  notes?: string;
+  photoUrls?: string;
+  createdAt: string;
+}
+
+export const insertInventoryConditionReportSchema = z.object({
+  inventoryItemId: z.string().min(1, "Inventory item is required"),
+  checkoutId: z.string().optional(),
+  reportedBy: z.string().optional(),
+  condition: z.enum(INVENTORY_CONDITIONS),
+  notes: z.string().optional(),
+  photoUrls: z.string().optional(),
+});
+
+export type InsertInventoryConditionReport = z.infer<typeof insertInventoryConditionReportSchema>;
+
+// ─── Phase 7E: Inventory Service Tickets ─────────────────────────────────────
+
+export const SERVICE_TICKET_STATUSES = [
+  "open",
+  "in_progress",
+  "resolved",
+  "closed",
+] as const;
+export type ServiceTicketStatus = typeof SERVICE_TICKET_STATUSES[number];
+
+export interface InventoryServiceTicket {
+  id: string;
+  organizationId: string;
+  inventoryItemId: string;
+  reportedBy?: string;
+  issueDescription: string;
+  status: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  resolutionNotes?: string;
+  createdAt: string;
+}
+
+export const insertInventoryServiceTicketSchema = z.object({
+  inventoryItemId: z.string().min(1, "Inventory item is required"),
+  reportedBy: z.string().optional(),
+  issueDescription: z.string().min(1, "Issue description is required"),
+  status: z.enum(SERVICE_TICKET_STATUSES).optional().default("open"),
+  resolvedAt: z.string().optional(),
+  resolvedBy: z.string().optional(),
+  resolutionNotes: z.string().optional(),
+});
+
+export const updateInventoryServiceTicketSchema = insertInventoryServiceTicketSchema.partial();
+
+export type InsertInventoryServiceTicket = z.infer<typeof insertInventoryServiceTicketSchema>;
+export type UpdateInventoryServiceTicket = z.infer<typeof updateInventoryServiceTicketSchema>;
