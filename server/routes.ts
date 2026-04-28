@@ -12,7 +12,9 @@ import {
   insertContactSchema, insertContactAssociationSchema,
   insertContractorCompanySchema, updateContractorCompanySchema,
   insertWorkerCertificationSchema, updateWorkerCertificationSchema,
-  insertCertificateOfInsuranceSchema, updateCertificateOfInsuranceSchema
+  insertCertificateOfInsuranceSchema, updateCertificateOfInsuranceSchema,
+  insertOshaIncidentSchema, updateOshaIncidentSchema,
+  insertWorkHoursLogSchema, updateWorkHoursLogSchema
 } from "@shared/schema";
 import type { AiFinding, User, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
 
@@ -1113,6 +1115,148 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch {
       res.status(500).json({ message: "Failed to delete certificate of insurance" });
+    }
+  });
+
+  // ─── OSHA Incidents (Phase 7C) ────────────────────────────────────────────
+
+  app.get("/api/osha-incidents", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const { jobsiteId, caseType, recordableCase } = req.query as {
+        jobsiteId?: string; caseType?: string; recordableCase?: string;
+      };
+      const filters: { jobsiteId?: string; caseType?: string; recordableCase?: string } = {};
+      if (typeof jobsiteId === "string" && jobsiteId) filters.jobsiteId = jobsiteId;
+      if (typeof caseType === "string" && caseType) filters.caseType = caseType;
+      if (typeof recordableCase === "string" && recordableCase) filters.recordableCase = recordableCase;
+      res.json(await storage.getOshaIncidents(orgId, filters));
+    } catch {
+      res.status(500).json({ message: "Failed to fetch OSHA incidents" });
+    }
+  });
+
+  app.get("/api/osha-incidents/:id", async (req, res) => {
+    try {
+      const incident = await storage.getOshaIncident(req.user!.organizationId, req.params.id);
+      if (!incident) return res.status(404).json({ message: "OSHA incident not found" });
+      res.json(incident);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch OSHA incident" });
+    }
+  });
+
+  app.post("/api/osha-incidents", async (req, res) => {
+    try {
+      const parsed = insertOshaIncidentSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      if (parsed.data.jobsiteId) {
+        const jobsite = await storage.getJobsite(parsed.data.jobsiteId);
+        if (!jobsite) return res.status(400).json({ message: "Jobsite not found" });
+        if (jobsite.organizationId !== orgId) return res.status(403).json({ message: "Forbidden" });
+      }
+      const incident = await storage.createOshaIncident(orgId, parsed.data);
+      res.status(201).json(incident);
+    } catch {
+      res.status(500).json({ message: "Failed to create OSHA incident" });
+    }
+  });
+
+  app.patch("/api/osha-incidents/:id", async (req, res) => {
+    try {
+      const parsed = updateOshaIncidentSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      if (parsed.data.jobsiteId) {
+        const jobsite = await storage.getJobsite(parsed.data.jobsiteId);
+        if (!jobsite) return res.status(400).json({ message: "Jobsite not found" });
+        if (jobsite.organizationId !== orgId) return res.status(403).json({ message: "Forbidden" });
+      }
+      const updated = await storage.updateOshaIncident(orgId, req.params.id, parsed.data);
+      if (!updated) return res.status(404).json({ message: "OSHA incident not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update OSHA incident" });
+    }
+  });
+
+  app.delete("/api/osha-incidents/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteOshaIncident(req.user!.organizationId, req.params.id);
+      if (!deleted) return res.status(404).json({ message: "OSHA incident not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete OSHA incident" });
+    }
+  });
+
+  // ─── Work Hours Log (Phase 7C) ────────────────────────────────────────────
+
+  app.get("/api/work-hours-log", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const { periodStart, periodEnd } = req.query as { periodStart?: string; periodEnd?: string };
+      const filters: { periodStart?: string; periodEnd?: string } = {};
+      if (typeof periodStart === "string" && periodStart) filters.periodStart = periodStart;
+      if (typeof periodEnd === "string" && periodEnd) filters.periodEnd = periodEnd;
+      res.json(await storage.getWorkHoursLog(orgId, filters));
+    } catch {
+      res.status(500).json({ message: "Failed to fetch work hours log" });
+    }
+  });
+
+  app.get("/api/work-hours-log/:id", async (req, res) => {
+    try {
+      const entry = await storage.getWorkHoursLogEntry(req.user!.organizationId, req.params.id);
+      if (!entry) return res.status(404).json({ message: "Work hours log entry not found" });
+      res.json(entry);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch work hours log entry" });
+    }
+  });
+
+  app.post("/api/work-hours-log", async (req, res) => {
+    try {
+      const parsed = insertWorkHoursLogSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const entry = await storage.createWorkHoursLogEntry(req.user!.organizationId, parsed.data);
+      res.status(201).json(entry);
+    } catch {
+      res.status(500).json({ message: "Failed to create work hours log entry" });
+    }
+  });
+
+  app.patch("/api/work-hours-log/:id", async (req, res) => {
+    try {
+      const parsed = updateWorkHoursLogSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const updated = await storage.updateWorkHoursLogEntry(req.user!.organizationId, req.params.id, parsed.data);
+      if (!updated) return res.status(404).json({ message: "Work hours log entry not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update work hours log entry" });
+    }
+  });
+
+  app.delete("/api/work-hours-log/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteWorkHoursLogEntry(req.user!.organizationId, req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Work hours log entry not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete work hours log entry" });
+    }
+  });
+
+  // ─── EMR / TRIR (Phase 7C) ────────────────────────────────────────────────
+
+  app.get("/api/emr/trir", async (req, res) => {
+    try {
+      const result = await storage.computeTrir(req.user!.organizationId);
+      res.json(result);
+    } catch {
+      res.status(500).json({ message: "Failed to compute TRIR" });
     }
   });
 
