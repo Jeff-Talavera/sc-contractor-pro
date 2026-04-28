@@ -668,3 +668,114 @@ export const updateContractorCompanySchema = z.object({
 
 export type InsertContractorCompany = z.infer<typeof insertContractorCompanySchema>;
 export type UpdateContractorCompany = z.infer<typeof updateContractorCompanySchema>;
+
+// ─── Phase 7B: Worker Certifications ─────────────────────────────────────────
+
+export const CERT_TYPES = [
+  "sst_card",
+  "osha_10",
+  "osha_30",
+  "osha_500",
+  "osha_510",
+  "ssm_license",
+  "ssic_card",
+  "chapter_33_8hr",
+  "first_aid_cpr",
+  "scaffold_user",
+  "scaffold_supervisor",
+  "confined_space",
+  "fall_protection",
+  "rigging",
+  "crane_operator",
+  "forklift",
+  "asbestos_handler",
+  "lead_handler",
+  "other",
+] as const;
+export type CertType = typeof CERT_TYPES[number];
+
+export const CERT_EXPIRY_STATUSES = [
+  "expired",
+  "expiring_soon",
+  "valid",
+  "no_expiry",
+] as const;
+
+export interface WorkerCertification {
+  id: string;
+  organizationId: string;
+  userId: string;
+  certType: string;
+  certNumber?: string;
+  issuingBody?: string;
+  issueDate: string;
+  expiryDate?: string;
+  documentUrl?: string;
+  notes?: string;
+  createdAt: string;
+  status?: string;
+}
+
+export const insertWorkerCertificationSchema = z.object({
+  userId: z.string().min(1, "User is required"),
+  certType: z.enum(CERT_TYPES),
+  certNumber: z.string().optional(),
+  issuingBody: z.string().optional(),
+  issueDate: z.string().min(1, "Issue date is required"),
+  expiryDate: z.string().optional(),
+  documentUrl: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const updateWorkerCertificationSchema = insertWorkerCertificationSchema.partial();
+
+export type InsertWorkerCertification = z.infer<typeof insertWorkerCertificationSchema>;
+export type UpdateWorkerCertification = z.infer<typeof updateWorkerCertificationSchema>;
+
+// ─── Phase 7B: Certificates of Insurance ─────────────────────────────────────
+
+export const COI_COVERAGE_TYPES = [
+  "gl",
+  "workers_comp",
+  "umbrella",
+  "professional",
+  "other",
+] as const;
+export type CoiCoverageType = typeof COI_COVERAGE_TYPES[number];
+
+export interface CertificateOfInsurance {
+  id: string;
+  organizationId: string;
+  companyName: string;
+  tradeCompanyId?: string;
+  linkedOrganizationId?: string;
+  coverageType: string;
+  insurer?: string;
+  policyNumber?: string;
+  coverageLimit?: string;
+  effectiveDate?: string;
+  expiryDate?: string;
+  documentUrl?: string;
+  notes?: string;
+  createdAt: string;
+  status?: string;
+}
+
+export const insertCertificateOfInsuranceSchema = z.object({
+  companyName: z.string().min(1, "Company name is required"),
+  tradeCompanyId: z.string().optional(),
+  linkedOrganizationId: z.string().optional(),
+  coverageType: z.enum(COI_COVERAGE_TYPES),
+  insurer: z.string().optional(),
+  policyNumber: z.string().optional(),
+  coverageLimit: z.string().optional(),
+  effectiveDate: z.string().optional(),
+  expiryDate: z.string().optional(),
+  documentUrl: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const updateCertificateOfInsuranceSchema = insertCertificateOfInsuranceSchema.partial();
+
+export type InsertCertificateOfInsurance = z.infer<typeof insertCertificateOfInsuranceSchema>;
+export type UpdateCertificateOfInsurance = z.infer<typeof updateCertificateOfInsuranceSchema>;
