@@ -8,6 +8,7 @@ import type {
   TradeCompany, JobsiteTradeAssignment,
   Contact, ContactAssociation, ContactAssociationEnriched, ContactWithAssociations,
   ContractorCompany,
+  WorkerCertification, CertificateOfInsurance,
   InsertClient, InsertJobsite, InsertInspection, InsertObservation,
   InsertEmployeeProfile, InsertScheduleEntry, InsertTimesheet, InsertTimesheetEntry,
   InsertSafetyReport, UpdateSafetySettings, UpdateOrganization,
@@ -15,7 +16,9 @@ import type {
   InsertIndependentContractor, InsertContractorAssignment,
   InsertTradeCompany, InsertJobsiteTradeAssignment,
   InsertContact, InsertContactAssociation,
-  InsertContractorCompany, UpdateContractorCompany
+  InsertContractorCompany, UpdateContractorCompany,
+  InsertWorkerCertification, UpdateWorkerCertification,
+  InsertCertificateOfInsurance, UpdateCertificateOfInsurance
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
@@ -38,6 +41,8 @@ type TimesheetEntryRow = typeof t.timesheetEntries.$inferInsert;
 type SafetyReportRow   = typeof t.safetyReports.$inferInsert;
 type SafetySettingsRow = typeof t.safetyReportSettings.$inferInsert;
 type ContractorCompanyRow = typeof t.contractorCompanies.$inferInsert;
+type WorkerCertificationRow = typeof t.workerCertifications.$inferInsert;
+type CertificateOfInsuranceRow = typeof t.certificatesOfInsurance.$inferInsert;
 
 // ─── Scoring logic ────────────────────────────────────────────────────────────
 
@@ -354,6 +359,51 @@ function mapSafetyReport(row: typeof t.safetyReports.$inferSelect): SafetyReport
   };
 }
 
+function computeExpiryStatus(expiryDate: string | null | undefined): string {
+  if (!expiryDate) return "no_expiry";
+  const today = new Date();
+  const expiry = new Date(expiryDate);
+  if (expiry < today) return "expired";
+  const thirtyDaysOut = new Date(today);
+  thirtyDaysOut.setDate(today.getDate() + 30);
+  if (expiry <= thirtyDaysOut) return "expiring_soon";
+  return "valid";
+}
+
+function mapWorkerCertification(row: typeof t.workerCertifications.$inferSelect): WorkerCertification {
+  return {
+    id: row.id, organizationId: row.organizationId, userId: row.userId,
+    certType: row.certType,
+    certNumber: row.certNumber ?? undefined,
+    issuingBody: row.issuingBody ?? undefined,
+    issueDate: row.issueDate,
+    expiryDate: row.expiryDate ?? undefined,
+    documentUrl: row.documentUrl ?? undefined,
+    notes: row.notes ?? undefined,
+    createdAt: row.createdAt,
+    status: computeExpiryStatus(row.expiryDate),
+  };
+}
+
+function mapCertificateOfInsurance(row: typeof t.certificatesOfInsurance.$inferSelect): CertificateOfInsurance {
+  return {
+    id: row.id, organizationId: row.organizationId,
+    companyName: row.companyName,
+    tradeCompanyId: row.tradeCompanyId ?? undefined,
+    linkedOrganizationId: row.linkedOrganizationId ?? undefined,
+    coverageType: row.coverageType,
+    insurer: row.insurer ?? undefined,
+    policyNumber: row.policyNumber ?? undefined,
+    coverageLimit: row.coverageLimit ?? undefined,
+    effectiveDate: row.effectiveDate ?? undefined,
+    expiryDate: row.expiryDate ?? undefined,
+    documentUrl: row.documentUrl ?? undefined,
+    notes: row.notes ?? undefined,
+    createdAt: row.createdAt,
+    status: computeExpiryStatus(row.expiryDate),
+  };
+}
+
 function mapSafetySettings(row: typeof t.safetyReportSettings.$inferSelect): SafetyReportSettings {
   return {
     organizationId: row.organizationId,
@@ -487,6 +537,20 @@ export interface IStorage {
   getContractorCompany(id: string): Promise<ContractorCompany | undefined>;
   createContractorCompany(data: InsertContractorCompany): Promise<ContractorCompany>;
   updateContractorCompany(id: string, updates: UpdateContractorCompany): Promise<ContractorCompany | undefined>;
+
+  // ─── Worker Certifications (Phase 7B) ─────────────────────────────────────
+  getWorkerCertifications(orgId: string, filters?: { userId?: string; certType?: string }): Promise<WorkerCertification[]>;
+  getWorkerCertification(orgId: string, id: string): Promise<WorkerCertification | undefined>;
+  createWorkerCertification(orgId: string, data: InsertWorkerCertification): Promise<WorkerCertification>;
+  updateWorkerCertification(orgId: string, id: string, data: UpdateWorkerCertification): Promise<WorkerCertification | undefined>;
+  deleteWorkerCertification(orgId: string, id: string): Promise<boolean>;
+
+  // ─── Certificates of Insurance (Phase 7B) ─────────────────────────────────
+  getCertificatesOfInsurance(orgId: string, filters?: { tradeCompanyId?: string; linkedOrganizationId?: string; coverageType?: string }): Promise<CertificateOfInsurance[]>;
+  getCertificateOfInsurance(orgId: string, id: string): Promise<CertificateOfInsurance | undefined>;
+  createCertificateOfInsurance(orgId: string, data: InsertCertificateOfInsurance): Promise<CertificateOfInsurance>;
+  updateCertificateOfInsurance(orgId: string, id: string, data: UpdateCertificateOfInsurance): Promise<CertificateOfInsurance | undefined>;
+  deleteCertificateOfInsurance(orgId: string, id: string): Promise<boolean>;
 
   // ─── Super-admin methods ──────────────────────────────────────────────────
   adminListOrgs(): Promise<Organization[]>;
@@ -1498,6 +1562,133 @@ export class DatabaseStorage implements IStorage {
       .where(eq(t.contractorCompanies.id, id))
       .returning();
     return result[0] as ContractorCompany | undefined;
+  }
+
+  // ─── Worker Certifications (Phase 7B) ─────────────────────────────────────
+
+  async getWorkerCertifications(orgId: string, filters?: { userId?: string; certType?: string }): Promise<WorkerCertification[]> {
+    const conditions = [eq(t.workerCertifications.organizationId, orgId)];
+    if (filters?.userId) conditions.push(eq(t.workerCertifications.userId, filters.userId));
+    if (filters?.certType) conditions.push(eq(t.workerCertifications.certType, filters.certType));
+    const rows = await db.select().from(t.workerCertifications).where(and(...conditions));
+    return rows.map(mapWorkerCertification);
+  }
+
+  async getWorkerCertification(orgId: string, id: string): Promise<WorkerCertification | undefined> {
+    const rows = await db.select().from(t.workerCertifications)
+      .where(and(eq(t.workerCertifications.id, id), eq(t.workerCertifications.organizationId, orgId)));
+    return rows[0] ? mapWorkerCertification(rows[0]) : undefined;
+  }
+
+  async createWorkerCertification(orgId: string, data: InsertWorkerCertification): Promise<WorkerCertification> {
+    const row: WorkerCertificationRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      userId: data.userId,
+      certType: data.certType,
+      certNumber: data.certNumber ?? null,
+      issuingBody: data.issuingBody ?? null,
+      issueDate: data.issueDate,
+      expiryDate: data.expiryDate ?? null,
+      documentUrl: data.documentUrl ?? null,
+      notes: data.notes ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.workerCertifications).values(row).returning();
+    return mapWorkerCertification(rows[0]);
+  }
+
+  async updateWorkerCertification(orgId: string, id: string, data: UpdateWorkerCertification): Promise<WorkerCertification | undefined> {
+    const existing = await this.getWorkerCertification(orgId, id);
+    if (!existing) return undefined;
+    const set: Partial<WorkerCertificationRow> = {};
+    if (data.userId !== undefined) set.userId = data.userId;
+    if (data.certType !== undefined) set.certType = data.certType;
+    if (data.certNumber !== undefined) set.certNumber = data.certNumber ?? null;
+    if (data.issuingBody !== undefined) set.issuingBody = data.issuingBody ?? null;
+    if (data.issueDate !== undefined) set.issueDate = data.issueDate;
+    if (data.expiryDate !== undefined) set.expiryDate = data.expiryDate ?? null;
+    if (data.documentUrl !== undefined) set.documentUrl = data.documentUrl ?? null;
+    if (data.notes !== undefined) set.notes = data.notes ?? null;
+    if (Object.keys(set).length === 0) return existing;
+    const rows = await db.update(t.workerCertifications).set(set)
+      .where(and(eq(t.workerCertifications.id, id), eq(t.workerCertifications.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapWorkerCertification(rows[0]) : undefined;
+  }
+
+  async deleteWorkerCertification(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(t.workerCertifications)
+      .where(and(eq(t.workerCertifications.id, id), eq(t.workerCertifications.organizationId, orgId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ─── Certificates of Insurance (Phase 7B) ─────────────────────────────────
+
+  async getCertificatesOfInsurance(orgId: string, filters?: { tradeCompanyId?: string; linkedOrganizationId?: string; coverageType?: string }): Promise<CertificateOfInsurance[]> {
+    const conditions = [eq(t.certificatesOfInsurance.organizationId, orgId)];
+    if (filters?.tradeCompanyId) conditions.push(eq(t.certificatesOfInsurance.tradeCompanyId, filters.tradeCompanyId));
+    if (filters?.linkedOrganizationId) conditions.push(eq(t.certificatesOfInsurance.linkedOrganizationId, filters.linkedOrganizationId));
+    if (filters?.coverageType) conditions.push(eq(t.certificatesOfInsurance.coverageType, filters.coverageType));
+    const rows = await db.select().from(t.certificatesOfInsurance).where(and(...conditions));
+    return rows.map(mapCertificateOfInsurance);
+  }
+
+  async getCertificateOfInsurance(orgId: string, id: string): Promise<CertificateOfInsurance | undefined> {
+    const rows = await db.select().from(t.certificatesOfInsurance)
+      .where(and(eq(t.certificatesOfInsurance.id, id), eq(t.certificatesOfInsurance.organizationId, orgId)));
+    return rows[0] ? mapCertificateOfInsurance(rows[0]) : undefined;
+  }
+
+  async createCertificateOfInsurance(orgId: string, data: InsertCertificateOfInsurance): Promise<CertificateOfInsurance> {
+    const row: CertificateOfInsuranceRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      companyName: data.companyName,
+      tradeCompanyId: data.tradeCompanyId ?? null,
+      linkedOrganizationId: data.linkedOrganizationId ?? null,
+      coverageType: data.coverageType,
+      insurer: data.insurer ?? null,
+      policyNumber: data.policyNumber ?? null,
+      coverageLimit: data.coverageLimit ?? null,
+      effectiveDate: data.effectiveDate ?? null,
+      expiryDate: data.expiryDate ?? null,
+      documentUrl: data.documentUrl ?? null,
+      notes: data.notes ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.certificatesOfInsurance).values(row).returning();
+    return mapCertificateOfInsurance(rows[0]);
+  }
+
+  async updateCertificateOfInsurance(orgId: string, id: string, data: UpdateCertificateOfInsurance): Promise<CertificateOfInsurance | undefined> {
+    const existing = await this.getCertificateOfInsurance(orgId, id);
+    if (!existing) return undefined;
+    const set: Partial<CertificateOfInsuranceRow> = {};
+    if (data.companyName !== undefined) set.companyName = data.companyName;
+    if (data.tradeCompanyId !== undefined) set.tradeCompanyId = data.tradeCompanyId ?? null;
+    if (data.linkedOrganizationId !== undefined) set.linkedOrganizationId = data.linkedOrganizationId ?? null;
+    if (data.coverageType !== undefined) set.coverageType = data.coverageType;
+    if (data.insurer !== undefined) set.insurer = data.insurer ?? null;
+    if (data.policyNumber !== undefined) set.policyNumber = data.policyNumber ?? null;
+    if (data.coverageLimit !== undefined) set.coverageLimit = data.coverageLimit ?? null;
+    if (data.effectiveDate !== undefined) set.effectiveDate = data.effectiveDate ?? null;
+    if (data.expiryDate !== undefined) set.expiryDate = data.expiryDate ?? null;
+    if (data.documentUrl !== undefined) set.documentUrl = data.documentUrl ?? null;
+    if (data.notes !== undefined) set.notes = data.notes ?? null;
+    if (Object.keys(set).length === 0) return existing;
+    const rows = await db.update(t.certificatesOfInsurance).set(set)
+      .where(and(eq(t.certificatesOfInsurance.id, id), eq(t.certificatesOfInsurance.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapCertificateOfInsurance(rows[0]) : undefined;
+  }
+
+  async deleteCertificateOfInsurance(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(t.certificatesOfInsurance)
+      .where(and(eq(t.certificatesOfInsurance.id, id), eq(t.certificatesOfInsurance.organizationId, orgId)))
+      .returning();
+    return result.length > 0;
   }
 }
 
