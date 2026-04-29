@@ -39,7 +39,7 @@ import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
 import { db } from "./db";
 import * as t from "@shared/tables";
-import { eq, and, gte, lte, inArray, isNull, desc } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, isNull, desc, type SQL } from "drizzle-orm";
 
 // ─── Drizzle insert/update row types ─────────────────────────────────────────
 
@@ -2607,7 +2607,7 @@ export class DatabaseStorage implements IStorage {
   // ─── Notifications (Phase 8) ──────────────────────────────────────────────
 
   async getNotifications(orgId: string, userId: string, filters?: { unreadOnly?: boolean }): Promise<Notification[]> {
-    const conditions = [
+    const conditions: SQL[] = [
       eq(t.notifications.organizationId, orgId),
       eq(t.notifications.userId, userId),
     ];
