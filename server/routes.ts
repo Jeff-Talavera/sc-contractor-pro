@@ -1760,7 +1760,8 @@ export async function registerRoutes(
       const notifications = await storage.getNotifications(orgId, userId, { unreadOnly });
       const unreadCount = await storage.getUnreadNotificationCount(orgId, userId);
       res.json({ notifications, unreadCount });
-    } catch {
+    } catch (e) {
+      console.error("GET /api/notifications failed:", e);
       res.status(500).json({ message: "Failed to fetch notifications" });
     }
   });
@@ -1769,7 +1770,8 @@ export async function registerRoutes(
     try {
       const unreadCount = await storage.getUnreadNotificationCount(req.user!.organizationId, req.user!.id);
       res.json({ unreadCount });
-    } catch {
+    } catch (e) {
+      console.error("GET /api/notifications/count failed:", e);
       res.status(500).json({ message: "Failed to fetch notification count" });
     }
   });
