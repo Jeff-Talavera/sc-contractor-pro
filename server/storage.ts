@@ -39,7 +39,7 @@ import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
 import { db } from "./db";
 import * as t from "@shared/tables";
-import { eq, and, gte, lte, inArray, isNull, desc } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, isNull, desc, sql, type SQL } from "drizzle-orm";
 
 // ─── Drizzle insert/update row types ─────────────────────────────────────────
 
@@ -2607,7 +2607,8 @@ export class DatabaseStorage implements IStorage {
   // ─── Notifications (Phase 8) ──────────────────────────────────────────────
 
   async getNotifications(orgId: string, userId: string, filters?: { unreadOnly?: boolean }): Promise<Notification[]> {
-    const conditions = [
+    await ensureNotificationsTable();
+    const conditions: SQL[] = [
       eq(t.notifications.organizationId, orgId),
       eq(t.notifications.userId, userId),
     ];
@@ -2620,6 +2621,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUnreadNotificationCount(orgId: string, userId: string): Promise<number> {
+    await ensureNotificationsTable();
     const rows = await db.select().from(t.notifications)
       .where(and(
         eq(t.notifications.organizationId, orgId),
@@ -2630,6 +2632,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createNotification(data: InsertNotification): Promise<Notification> {
+    await ensureNotificationsTable();
     const row: NotificationRow = {
       id: randomUUID(),
       organizationId: data.organizationId,
@@ -2647,6 +2650,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async markNotificationRead(orgId: string, userId: string, id: string): Promise<Notification | undefined> {
+    await ensureNotificationsTable();
     const existing = await db.select().from(t.notifications).where(and(
       eq(t.notifications.id, id),
       eq(t.notifications.organizationId, orgId),
@@ -2665,6 +2669,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async markAllNotificationsRead(orgId: string, userId: string): Promise<void> {
+    await ensureNotificationsTable();
     await db.update(t.notifications)
       .set({ readAt: new Date().toISOString() })
       .where(and(
@@ -2675,6 +2680,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteNotification(orgId: string, userId: string, id: string): Promise<boolean> {
+    await ensureNotificationsTable();
     const result = await db.delete(t.notifications)
       .where(and(
         eq(t.notifications.id, id),
@@ -2686,6 +2692,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNotificationByEntity(orgId: string, type: string, entityId: string): Promise<Notification | undefined> {
+    await ensureNotificationsTable();
     const rows = await db.select().from(t.notifications)
       .where(and(
         eq(t.notifications.organizationId, orgId),
@@ -2695,6 +2702,26 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     return rows[0] ? mapNotification(rows[0]) : undefined;
   }
+}
+
+let notificationsTableEnsured = false;
+async function ensureNotificationsTable(): Promise<void> {
+  if (notificationsTableEnsured) return;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "notifications" (
+      "id" text PRIMARY KEY NOT NULL,
+      "organization_id" text NOT NULL,
+      "user_id" text NOT NULL,
+      "type" text NOT NULL,
+      "title" text NOT NULL,
+      "message" text NOT NULL,
+      "entity_type" text,
+      "entity_id" text,
+      "read_at" text,
+      "created_at" text NOT NULL
+    )
+  `);
+  notificationsTableEnsured = true;
 }
 
 function mapNotification(row: typeof t.notifications.$inferSelect): Notification {
