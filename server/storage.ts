@@ -37,6 +37,9 @@ import type {
   ProcurementRequestItem, InsertProcurementRequestItem, UpdateProcurementRequestItem,
   DeliveryAssignment,
   Invite, InsertInvite,
+  ComplianceRequirementRow, JobsiteWorkerAssignmentRow, JobsiteViolationRow,
+  InsertJobsiteWorkerAssignment, InsertJobsiteViolation, UpdateJobsiteViolation,
+  JobsiteComplianceAudit, OrgComplianceSummary,
 } from "@shared/schema";
 import { PORTFOLIO_SECTIONS } from "@shared/schema";
 import { randomUUID } from "crypto";
@@ -77,6 +80,9 @@ type ProcurementRequestRow = typeof t.procurementRequests.$inferInsert;
 type ProcurementRequestItemRow = typeof t.procurementRequestItems.$inferInsert;
 type DeliveryAssignmentRow = typeof t.deliveryAssignments.$inferInsert;
 type InviteRow = typeof t.invites.$inferInsert;
+type JobsiteWorkerAssignmentDbRow = typeof t.jobsiteWorkerAssignments.$inferInsert;
+type ComplianceRequirementDbRow = typeof t.complianceRequirements.$inferInsert;
+type JobsiteViolationDbRow = typeof t.jobsiteViolations.$inferInsert;
 
 // ─── Scoring logic ────────────────────────────────────────────────────────────
 
@@ -837,6 +843,17 @@ export interface IStorage {
   // ─── User Management (Phase 10) ───────────────────────────────────────────
   updateUserRole(orgId: string, userId: string, role: string): Promise<User | undefined>;
   removeUserFromOrg(orgId: string, userId: string): Promise<boolean>;
+
+  // ─── Compliance Engine (Phase 11) ─────────────────────────────────────────
+  getJobsiteWorkerAssignments(jobsiteId: string, organizationId: string): Promise<JobsiteWorkerAssignmentRow[]>;
+  createJobsiteWorkerAssignment(jobsiteId: string, organizationId: string, data: InsertJobsiteWorkerAssignment): Promise<JobsiteWorkerAssignmentRow>;
+  deleteJobsiteWorkerAssignment(id: string, organizationId: string): Promise<void>;
+  getComplianceRequirements(filters?: { isActive?: boolean }): Promise<ComplianceRequirementRow[]>;
+  getJobsiteComplianceAudit(jobsiteId: string, organizationId: string): Promise<JobsiteComplianceAudit | undefined>;
+  getOrgComplianceSummary(organizationId: string): Promise<OrgComplianceSummary[]>;
+  getJobsiteViolations(jobsiteId: string, organizationId: string): Promise<JobsiteViolationRow[]>;
+  createJobsiteViolation(jobsiteId: string, organizationId: string, data: InsertJobsiteViolation): Promise<JobsiteViolationRow>;
+  updateJobsiteViolation(id: string, organizationId: string, data: UpdateJobsiteViolation): Promise<JobsiteViolationRow | undefined>;
 
   // ─── Super-admin methods ──────────────────────────────────────────────────
   adminListOrgs(): Promise<Organization[]>;
@@ -3007,6 +3024,205 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return rows.length > 0;
   }
+
+  // ─── Compliance Engine (Phase 11) ─────────────────────────────────────────
+
+  async getJobsiteWorkerAssignments(jobsiteId: string, organizationId: string): Promise<JobsiteWorkerAssignmentRow[]> {
+    const rows = await db.select().from(t.jobsiteWorkerAssignments)
+      .where(and(
+        eq(t.jobsiteWorkerAssignments.jobsiteId, jobsiteId),
+        eq(t.jobsiteWorkerAssignments.organizationId, organizationId),
+      ));
+    return rows.map(mapJobsiteWorkerAssignment);
+  }
+
+  async createJobsiteWorkerAssignment(jobsiteId: string, organizationId: string, data: InsertJobsiteWorkerAssignment): Promise<JobsiteWorkerAssignmentRow> {
+    const row: JobsiteWorkerAssignmentDbRow = {
+      id: randomUUID(),
+      organizationId,
+      jobsiteId,
+      userId: data.userId,
+      scopeOfWork: data.scopeOfWork,
+      startDate: data.startDate,
+      endDate: data.endDate ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.jobsiteWorkerAssignments).values(row).returning();
+    return mapJobsiteWorkerAssignment(rows[0]);
+  }
+
+  async deleteJobsiteWorkerAssignment(id: string, organizationId: string): Promise<void> {
+    await db.delete(t.jobsiteWorkerAssignments)
+      .where(and(
+        eq(t.jobsiteWorkerAssignments.id, id),
+        eq(t.jobsiteWorkerAssignments.organizationId, organizationId),
+      ));
+  }
+
+  async getComplianceRequirements(filters?: { isActive?: boolean }): Promise<ComplianceRequirementRow[]> {
+    const conditions: SQL[] = [];
+    if (filters?.isActive !== undefined) {
+      conditions.push(eq(t.complianceRequirements.isActive, filters.isActive));
+    }
+    const rows = conditions.length > 0
+      ? await db.select().from(t.complianceRequirements).where(and(...conditions))
+      : await db.select().from(t.complianceRequirements);
+    return rows.map(mapComplianceRequirement);
+  }
+
+  async getJobsiteComplianceAudit(jobsiteId: string, organizationId: string): Promise<JobsiteComplianceAudit | undefined> {
+    const jobsiteRows = await db.select().from(t.jobsites)
+      .where(and(eq(t.jobsites.id, jobsiteId), eq(t.jobsites.organizationId, organizationId)));
+    const jobsite = jobsiteRows[0];
+    if (!jobsite) return undefined;
+
+    const triggeredFlags: string[] = [];
+    if (jobsite.hasScaffold) triggeredFlags.push("hasScaffold");
+    if (jobsite.hasCrane) triggeredFlags.push("hasCrane");
+    if (jobsite.hasExcavation) triggeredFlags.push("hasExcavation");
+    if (jobsite.bin && jobsite.bin.length > 0) triggeredFlags.push("hasBin");
+
+    const allActiveReqs = await db.select().from(t.complianceRequirements)
+      .where(eq(t.complianceRequirements.isActive, true));
+    const requirements = allActiveReqs.filter(r => triggeredFlags.includes(r.jobsiteFlag));
+
+    const assignments = await this.getJobsiteWorkerAssignments(jobsiteId, organizationId);
+
+    const userIds = assignments.map(a => a.userId);
+    const userRows = userIds.length > 0
+      ? await db.select().from(t.users).where(inArray(t.users.id, userIds))
+      : [];
+    const userNameById = new Map<string, string>();
+    for (const u of userRows) userNameById.set(u.id, u.name);
+
+    let compliantCount = 0;
+    let totalCombos = 0;
+
+    const workers: JobsiteComplianceAudit["workers"] = [];
+    for (const a of assignments) {
+      const certs = await db.select().from(t.workerCertifications)
+        .where(and(
+          eq(t.workerCertifications.organizationId, organizationId),
+          eq(t.workerCertifications.userId, a.userId),
+        ));
+      const requiredCerts: JobsiteComplianceAudit["workers"][number]["requiredCerts"] = [];
+      for (const req of requirements) {
+        totalCombos += 1;
+        const cert = certs.find(c => c.certType === req.requiredCertType);
+        let status: "compliant" | "missing" | "expired";
+        if (!cert) {
+          status = "missing";
+        } else if (computeExpiryStatus(cert.expiryDate) === "expired") {
+          status = "expired";
+        } else {
+          status = "compliant";
+          compliantCount += 1;
+        }
+        requiredCerts.push({
+          certType: req.requiredCertType,
+          jurisdiction: req.jurisdiction,
+          description: req.description,
+          status,
+        });
+      }
+      workers.push({
+        userId: a.userId,
+        userName: userNameById.get(a.userId) ?? a.userId,
+        scopeOfWork: a.scopeOfWork,
+        requiredCerts,
+      });
+    }
+
+    const compliancePercent = totalCombos > 0
+      ? Math.round((compliantCount / totalCombos) * 100)
+      : 100;
+
+    const openViolationRows = await db.select().from(t.jobsiteViolations)
+      .where(and(
+        eq(t.jobsiteViolations.jobsiteId, jobsiteId),
+        eq(t.jobsiteViolations.organizationId, organizationId),
+        eq(t.jobsiteViolations.status, "open"),
+      ));
+
+    return {
+      jobsiteId: jobsite.id,
+      jobsiteName: jobsite.name,
+      workers,
+      compliancePercent,
+      violationCount: openViolationRows.length,
+    };
+  }
+
+  async getOrgComplianceSummary(organizationId: string): Promise<OrgComplianceSummary[]> {
+    const jobsiteRows = await db.select().from(t.jobsites)
+      .where(eq(t.jobsites.organizationId, organizationId));
+    const summaries: OrgComplianceSummary[] = [];
+    for (const j of jobsiteRows) {
+      const audit = await this.getJobsiteComplianceAudit(j.id, organizationId);
+      if (!audit) continue;
+      const totalWorkers = audit.workers.length;
+      const workersWithGaps = audit.workers.filter(w =>
+        w.requiredCerts.some(c => c.status !== "compliant")
+      ).length;
+      summaries.push({
+        jobsiteId: audit.jobsiteId,
+        jobsiteName: audit.jobsiteName,
+        compliancePercent: audit.compliancePercent,
+        openViolations: audit.violationCount,
+        totalWorkers,
+        workersWithGaps,
+      });
+    }
+    return summaries;
+  }
+
+  async getJobsiteViolations(jobsiteId: string, organizationId: string): Promise<JobsiteViolationRow[]> {
+    const rows = await db.select().from(t.jobsiteViolations)
+      .where(and(
+        eq(t.jobsiteViolations.jobsiteId, jobsiteId),
+        eq(t.jobsiteViolations.organizationId, organizationId),
+      ));
+    return rows.map(mapJobsiteViolation);
+  }
+
+  async createJobsiteViolation(jobsiteId: string, organizationId: string, data: InsertJobsiteViolation): Promise<JobsiteViolationRow> {
+    const row: JobsiteViolationDbRow = {
+      id: randomUUID(),
+      organizationId,
+      jobsiteId,
+      source: data.source,
+      violationType: data.violationType,
+      description: data.description,
+      issuedDate: data.issuedDate,
+      resolvedDate: data.resolvedDate ?? null,
+      severity: data.severity,
+      referenceNumber: data.referenceNumber ?? null,
+      status: data.status,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.jobsiteViolations).values(row).returning();
+    return mapJobsiteViolation(rows[0]);
+  }
+
+  async updateJobsiteViolation(id: string, organizationId: string, data: UpdateJobsiteViolation): Promise<JobsiteViolationRow | undefined> {
+    const existing = await db.select().from(t.jobsiteViolations)
+      .where(and(eq(t.jobsiteViolations.id, id), eq(t.jobsiteViolations.organizationId, organizationId)));
+    if (!existing[0]) return undefined;
+    const set: Partial<JobsiteViolationDbRow> = {};
+    if (data.source !== undefined) set.source = data.source;
+    if (data.violationType !== undefined) set.violationType = data.violationType;
+    if (data.description !== undefined) set.description = data.description;
+    if (data.issuedDate !== undefined) set.issuedDate = data.issuedDate;
+    if (data.resolvedDate !== undefined) set.resolvedDate = data.resolvedDate ?? null;
+    if (data.severity !== undefined) set.severity = data.severity;
+    if (data.referenceNumber !== undefined) set.referenceNumber = data.referenceNumber ?? null;
+    if (data.status !== undefined) set.status = data.status;
+    if (Object.keys(set).length === 0) return mapJobsiteViolation(existing[0]);
+    const rows = await db.update(t.jobsiteViolations).set(set)
+      .where(and(eq(t.jobsiteViolations.id, id), eq(t.jobsiteViolations.organizationId, organizationId)))
+      .returning();
+    return rows[0] ? mapJobsiteViolation(rows[0]) : undefined;
+  }
 }
 
 function mapProcurementRequest(row: typeof t.procurementRequests.$inferSelect): ProcurementRequest {
@@ -3136,6 +3352,48 @@ function mapPortfolioShare(row: typeof t.portfolioShares.$inferSelect): Portfoli
     visibleSections: parsed,
     createdBy: row.createdBy ?? undefined,
     createdAt: row.createdAt ?? "",
+  };
+}
+
+function mapJobsiteWorkerAssignment(row: typeof t.jobsiteWorkerAssignments.$inferSelect): JobsiteWorkerAssignmentRow {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    jobsiteId: row.jobsiteId,
+    userId: row.userId,
+    scopeOfWork: row.scopeOfWork,
+    startDate: row.startDate,
+    endDate: row.endDate ?? null,
+    createdAt: row.createdAt,
+  };
+}
+
+function mapComplianceRequirement(row: typeof t.complianceRequirements.$inferSelect): ComplianceRequirementRow {
+  return {
+    id: row.id,
+    jobsiteFlag: row.jobsiteFlag,
+    jurisdiction: row.jurisdiction,
+    requiredCertType: row.requiredCertType,
+    description: row.description,
+    isActive: row.isActive,
+    createdAt: row.createdAt,
+  };
+}
+
+function mapJobsiteViolation(row: typeof t.jobsiteViolations.$inferSelect): JobsiteViolationRow {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    jobsiteId: row.jobsiteId,
+    source: row.source,
+    violationType: row.violationType,
+    description: row.description,
+    issuedDate: row.issuedDate,
+    resolvedDate: row.resolvedDate ?? null,
+    severity: row.severity,
+    referenceNumber: row.referenceNumber ?? null,
+    status: row.status,
+    createdAt: row.createdAt,
   };
 }
 

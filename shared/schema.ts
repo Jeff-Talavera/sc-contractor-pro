@@ -1342,3 +1342,107 @@ export const updateUserRoleSchema = z.object({
 export type UpdateUserRole = z.infer<typeof updateUserRoleSchema>;
 
 export type InsertDeliveryAssignment = z.infer<typeof insertDeliveryAssignmentSchema>;
+
+// ─── Phase 11: Compliance Engine ─────────────────────────────────────────────
+
+export const VIOLATION_SOURCES = ["dob", "osha", "internal"] as const;
+export type ViolationSource = typeof VIOLATION_SOURCES[number];
+
+export const VIOLATION_SEVERITIES = ["stop_work", "willful", "serious", "other"] as const;
+export type ViolationSeverity = typeof VIOLATION_SEVERITIES[number];
+
+export const VIOLATION_STATUSES = ["open", "resolved", "contested"] as const;
+export type ViolationStatus = typeof VIOLATION_STATUSES[number];
+
+export const insertJobsiteWorkerAssignmentSchema = z.object({
+  userId: z.string().min(1, "User is required"),
+  scopeOfWork: z.string().min(1, "Scope of work is required"),
+  startDate: z.string().min(1, "Start date is required"),
+  endDate: z.string().optional(),
+});
+
+export type InsertJobsiteWorkerAssignment = z.infer<typeof insertJobsiteWorkerAssignmentSchema>;
+
+export const insertJobsiteViolationSchema = z.object({
+  source: z.enum(VIOLATION_SOURCES),
+  violationType: z.string().min(1, "Violation type is required"),
+  description: z.string().min(1, "Description is required"),
+  issuedDate: z.string().min(1, "Issued date is required"),
+  resolvedDate: z.string().optional(),
+  severity: z.enum(VIOLATION_SEVERITIES),
+  referenceNumber: z.string().optional(),
+  status: z.enum(VIOLATION_STATUSES),
+});
+
+export type InsertJobsiteViolation = z.infer<typeof insertJobsiteViolationSchema>;
+
+export const updateJobsiteViolationSchema = insertJobsiteViolationSchema.partial();
+
+export type UpdateJobsiteViolation = z.infer<typeof updateJobsiteViolationSchema>;
+
+export interface ComplianceRequirementRow {
+  id: string;
+  jobsiteFlag: string;
+  jurisdiction: string;
+  requiredCertType: string;
+  description: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface JobsiteWorkerAssignmentRow {
+  id: string;
+  organizationId: string;
+  jobsiteId: string;
+  userId: string;
+  scopeOfWork: string;
+  startDate: string;
+  endDate: string | null;
+  createdAt: string;
+}
+
+export interface JobsiteViolationRow {
+  id: string;
+  organizationId: string;
+  jobsiteId: string;
+  source: string;
+  violationType: string;
+  description: string;
+  issuedDate: string;
+  resolvedDate: string | null;
+  severity: string;
+  referenceNumber: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export interface JobsiteComplianceAuditWorkerCert {
+  certType: string;
+  jurisdiction: string;
+  description: string;
+  status: "compliant" | "missing" | "expired";
+}
+
+export interface JobsiteComplianceAuditWorker {
+  userId: string;
+  userName: string;
+  scopeOfWork: string;
+  requiredCerts: JobsiteComplianceAuditWorkerCert[];
+}
+
+export interface JobsiteComplianceAudit {
+  jobsiteId: string;
+  jobsiteName: string;
+  workers: JobsiteComplianceAuditWorker[];
+  compliancePercent: number;
+  violationCount: number;
+}
+
+export interface OrgComplianceSummary {
+  jobsiteId: string;
+  jobsiteName: string;
+  compliancePercent: number;
+  openViolations: number;
+  totalWorkers: number;
+  workersWithGaps: number;
+}

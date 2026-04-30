@@ -26,6 +26,8 @@ import {
   insertProcurementRequestSchema, updateProcurementRequestSchema, updateProcurementStatusSchema,
   insertProcurementRequestItemSchema, updateProcurementRequestItemSchema,
   insertInviteSchema, updateUserRoleSchema,
+  insertJobsiteWorkerAssignmentSchema,
+  insertJobsiteViolationSchema, updateJobsiteViolationSchema,
 } from "@shared/schema";
 import type { VisibleSections } from "@shared/schema";
 import type { AiFinding, User, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
@@ -2232,6 +2234,113 @@ export async function registerRoutes(
       res.json(await storage.getDeliveryAssignments(orgId, filters));
     } catch {
       res.status(500).json({ message: "Failed to fetch delivery assignments" });
+    }
+  });
+
+  // ─── Compliance Engine (Phase 11) ───────────────────────────────────────────
+
+  app.get("/api/jobsites/:id/workers", async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      const workers = await storage.getJobsiteWorkerAssignments(req.params.id, req.user!.organizationId);
+      res.json(workers);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch worker assignments" });
+    }
+  });
+
+  app.post("/api/jobsites/:id/workers", requireRole("Admin", "Owner"), async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      const parsed = insertJobsiteWorkerAssignmentSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgUsers = await storage.getUsersByOrg(req.user!.organizationId);
+      if (!orgUsers.find(u => u.id === parsed.data.userId)) {
+        return res.status(400).json({ message: "User not found in your organization" });
+      }
+      const assignment = await storage.createJobsiteWorkerAssignment(req.params.id, req.user!.organizationId, parsed.data);
+      res.status(201).json(assignment);
+    } catch {
+      res.status(500).json({ message: "Failed to create worker assignment" });
+    }
+  });
+
+  app.delete("/api/jobsites/:id/workers/:assignmentId", requireRole("Admin", "Owner"), async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      await storage.deleteJobsiteWorkerAssignment(req.params.assignmentId, req.user!.organizationId);
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete worker assignment" });
+    }
+  });
+
+  app.get("/api/jobsites/:id/compliance", async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      const audit = await storage.getJobsiteComplianceAudit(req.params.id, req.user!.organizationId);
+      if (!audit) return res.status(404).json({ message: "Jobsite not found" });
+      res.json(audit);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch compliance audit" });
+    }
+  });
+
+  app.get("/api/compliance/summary", async (req, res) => {
+    try {
+      const summary = await storage.getOrgComplianceSummary(req.user!.organizationId);
+      res.json(summary);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch compliance summary" });
+    }
+  });
+
+  app.get("/api/jobsites/:id/violations", async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      const violations = await storage.getJobsiteViolations(req.params.id, req.user!.organizationId);
+      res.json(violations);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch violations" });
+    }
+  });
+
+  app.post("/api/jobsites/:id/violations", requireRole("Admin", "Owner"), async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      const parsed = insertJobsiteViolationSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const violation = await storage.createJobsiteViolation(req.params.id, req.user!.organizationId, parsed.data);
+      res.status(201).json(violation);
+    } catch {
+      res.status(500).json({ message: "Failed to create violation" });
+    }
+  });
+
+  app.patch("/api/jobsites/:id/violations/:vid", requireRole("Admin", "Owner"), async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      const parsed = updateJobsiteViolationSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const updated = await storage.updateJobsiteViolation(req.params.vid, req.user!.organizationId, parsed.data);
+      if (!updated) return res.status(404).json({ message: "Violation not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update violation" });
     }
   });
 

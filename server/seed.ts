@@ -1,6 +1,7 @@
 import { db } from "./db";
 import * as t from "@shared/tables";
 import { eq, isNull, and } from "drizzle-orm";
+import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
 import {
   mockOrganizations, mockUsers, mockClients, mockJobsites, mockCodeReferences,
@@ -238,6 +239,48 @@ export async function seedPasswords() {
     await db.update(t.users).set({ passwordHash: hash }).where(eq(t.users.id, user.id));
   }
   console.log("Passwords set.");
+}
+
+const COMPLIANCE_REQUIREMENTS_MARKER = "compliance_requirements_v1";
+
+const COMPLIANCE_REQUIREMENT_SEEDS: Array<{
+  jobsiteFlag: string;
+  jurisdiction: string;
+  requiredCertType: string;
+  description: string;
+}> = [
+  { jobsiteFlag: "hasScaffold", jurisdiction: "nyc", requiredCertType: "chapter_33_8hr", description: "NYC BC Chapter 33 — 8hr scaffold safety required" },
+  { jobsiteFlag: "hasScaffold", jurisdiction: "federal", requiredCertType: "osha_30", description: "OSHA 30-hr required for scaffold work" },
+  { jobsiteFlag: "hasCrane", jurisdiction: "federal", requiredCertType: "osha_30", description: "OSHA 30-hr required for crane operations" },
+  { jobsiteFlag: "hasExcavation", jurisdiction: "federal", requiredCertType: "osha_30", description: "OSHA 30-hr required for excavation work" },
+  { jobsiteFlag: "hasBin", jurisdiction: "nyc", requiredCertType: "sst_card", description: "NYC SST card required on all covered sites" },
+  { jobsiteFlag: "hasBin", jurisdiction: "nyc", requiredCertType: "ssm_cert", description: "NYC Site Safety Manager cert required on covered sites" },
+];
+
+export async function seedComplianceRequirements() {
+  const marker = await db.select().from(t.seedMeta)
+    .where(eq(t.seedMeta.key, COMPLIANCE_REQUIREMENTS_MARKER)).limit(1);
+  if (marker.length > 0) return;
+
+  const now = new Date().toISOString();
+  for (const r of COMPLIANCE_REQUIREMENT_SEEDS) {
+    await db.insert(t.complianceRequirements).values({
+      id: randomUUID(),
+      jobsiteFlag: r.jobsiteFlag,
+      jurisdiction: r.jurisdiction,
+      requiredCertType: r.requiredCertType,
+      description: r.description,
+      isActive: true,
+      createdAt: now,
+    }).onConflictDoNothing();
+  }
+
+  await db.insert(t.seedMeta).values({
+    key: COMPLIANCE_REQUIREMENTS_MARKER,
+    seededAt: now,
+  }).onConflictDoNothing();
+
+  console.log("Compliance requirements seed complete.");
 }
 
 const SUPER_ADMIN_ORG_ID = "org-system";
