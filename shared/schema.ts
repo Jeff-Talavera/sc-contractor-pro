@@ -1176,6 +1176,11 @@ export const NOTIFICATION_TYPES = [
   "osha_incident_filed",
   "delivery_status_changed",
   "inventory_overdue",
+  "procurement_submitted",
+  "procurement_approved",
+  "procurement_rejected",
+  "procurement_dispatched",
+  "procurement_delivered",
 ] as const;
 export type NotificationType = typeof NOTIFICATION_TYPES[number];
 
@@ -1203,3 +1208,107 @@ export const insertNotificationSchema = z.object({
 });
 
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+// ─── Phase 9: Procurement Requests ───────────────────────────────────────────
+
+export const PROCUREMENT_STATUSES = [
+  "draft",
+  "submitted",
+  "approved",
+  "rejected",
+  "dispatched",
+  "delivered",
+  "cancelled",
+] as const;
+export type ProcurementStatus = typeof PROCUREMENT_STATUSES[number];
+
+export const PROCUREMENT_ITEM_TYPES = [
+  "material",
+  "inventory_item",
+  "other",
+] as const;
+export type ProcurementItemType = typeof PROCUREMENT_ITEM_TYPES[number];
+
+export interface ProcurementRequest {
+  id: string;
+  organizationId: string;
+  jobsiteId?: string | null;
+  requestedBy: string;
+  approvedBy?: string | null;
+  rejectedBy?: string | null;
+  assignedDriverId?: string | null;
+  status: string;
+  notes?: string | null;
+  neededByDate?: string | null;
+  rejectionReason?: string | null;
+  createdAt?: string | null;
+}
+
+export const insertProcurementRequestSchema = z.object({
+  jobsiteId: z.string().optional().nullable(),
+  requestedBy: z.string().min(1, "Requested by is required"),
+  assignedDriverId: z.string().optional().nullable(),
+  status: z.enum(PROCUREMENT_STATUSES).optional().default("draft"),
+  notes: z.string().optional().nullable(),
+  neededByDate: z.string().optional().nullable(),
+});
+
+export const updateProcurementRequestSchema = insertProcurementRequestSchema.partial();
+
+export const updateProcurementStatusSchema = z.object({
+  status: z.enum(PROCUREMENT_STATUSES),
+  rejectionReason: z.string().optional(),
+  assignedDriverId: z.string().optional(),
+});
+
+export type InsertProcurementRequest = z.infer<typeof insertProcurementRequestSchema>;
+export type UpdateProcurementRequest = z.infer<typeof updateProcurementRequestSchema>;
+export type UpdateProcurementStatus = z.infer<typeof updateProcurementStatusSchema>;
+
+// ─── Phase 9: Procurement Request Items ──────────────────────────────────────
+
+export interface ProcurementRequestItem {
+  id: string;
+  organizationId: string;
+  procurementRequestId: string;
+  itemType: string;
+  inventoryItemId?: string | null;
+  description: string;
+  quantity: string;
+  unit?: string | null;
+  fulfilledQuantity?: string | null;
+  notes?: string | null;
+  createdAt?: string | null;
+}
+
+export const insertProcurementRequestItemSchema = z.object({
+  itemType: z.enum(PROCUREMENT_ITEM_TYPES),
+  inventoryItemId: z.string().optional().nullable(),
+  description: z.string().min(1, "Description is required"),
+  quantity: z.string().min(1, "Quantity is required"),
+  unit: z.string().optional().nullable(),
+  fulfilledQuantity: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
+export const updateProcurementRequestItemSchema = insertProcurementRequestItemSchema.partial();
+
+export type InsertProcurementRequestItem = z.infer<typeof insertProcurementRequestItemSchema>;
+export type UpdateProcurementRequestItem = z.infer<typeof updateProcurementRequestItemSchema>;
+
+// ─── Phase 9: Delivery Assignments ───────────────────────────────────────────
+
+export interface DeliveryAssignment {
+  id: string;
+  organizationId: string;
+  procurementRequestId: string;
+  deliveryRequestId: string;
+  createdAt?: string | null;
+}
+
+export const insertDeliveryAssignmentSchema = z.object({
+  procurementRequestId: z.string().min(1, "Procurement request is required"),
+  deliveryRequestId: z.string().min(1, "Delivery request is required"),
+});
+
+export type InsertDeliveryAssignment = z.infer<typeof insertDeliveryAssignmentSchema>;

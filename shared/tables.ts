@@ -552,3 +552,42 @@ export const notifications = pgTable("notifications", {
   readAt: text("read_at"),
   createdAt: text("created_at").notNull(),
 });
+
+// ─── Phase 9: Procurement Requests, Items & Delivery Assignments ─────────────
+
+export const procurementRequests = pgTable("procurement_requests", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  jobsiteId: text("jobsite_id"),
+  requestedBy: text("requested_by").notNull(),
+  approvedBy: text("approved_by"),
+  rejectedBy: text("rejected_by"),
+  assignedDriverId: text("assigned_driver_id"),
+  status: text("status").notNull().default("draft"),
+  notes: text("notes"),
+  neededByDate: text("needed_by_date"),
+  rejectionReason: text("rejection_reason"),
+  createdAt: text("created_at"),
+});
+
+export const procurementRequestItems = pgTable("procurement_request_items", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  procurementRequestId: text("procurement_request_id").notNull(),
+  itemType: text("item_type").notNull(),
+  inventoryItemId: text("inventory_item_id"),
+  description: text("description").notNull(),
+  quantity: text("quantity").notNull(),
+  unit: text("unit"),
+  fulfilledQuantity: text("fulfilled_quantity"),
+  notes: text("notes"),
+  createdAt: text("created_at"),
+});
+
+export const deliveryAssignments = pgTable("delivery_assignments", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  procurementRequestId: text("procurement_request_id").notNull(),
+  deliveryRequestId: text("delivery_request_id").notNull(),
+  createdAt: text("created_at"),
+});

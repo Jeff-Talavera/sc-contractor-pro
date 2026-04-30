@@ -33,13 +33,16 @@ import type {
   InsertInventoryServiceTicket, UpdateInventoryServiceTicket,
   PortfolioShare, InsertPortfolioShare, VisibleSections, PortfolioSnapshot,
   Notification, InsertNotification,
+  ProcurementRequest, InsertProcurementRequest, UpdateProcurementRequest, UpdateProcurementStatus,
+  ProcurementRequestItem, InsertProcurementRequestItem, UpdateProcurementRequestItem,
+  DeliveryAssignment,
 } from "@shared/schema";
 import { PORTFOLIO_SECTIONS } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcrypt";
 import { db } from "./db";
 import * as t from "@shared/tables";
-import { eq, and, gte, lte, inArray, isNull, desc, type SQL } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, notInArray, isNull, desc, type SQL } from "drizzle-orm";
 
 // ─── Drizzle insert/update row types ─────────────────────────────────────────
 
@@ -69,6 +72,9 @@ type InventoryConditionReportRow = typeof t.inventoryConditionReports.$inferInse
 type InventoryServiceTicketRow = typeof t.inventoryServiceTickets.$inferInsert;
 type PortfolioShareRow = typeof t.portfolioShares.$inferInsert;
 type NotificationRow = typeof t.notifications.$inferInsert;
+type ProcurementRequestRow = typeof t.procurementRequests.$inferInsert;
+type ProcurementRequestItemRow = typeof t.procurementRequestItems.$inferInsert;
+type DeliveryAssignmentRow = typeof t.deliveryAssignments.$inferInsert;
 
 // ─── Scoring logic ────────────────────────────────────────────────────────────
 
@@ -799,6 +805,25 @@ export interface IStorage {
   markAllNotificationsRead(orgId: string, userId: string): Promise<void>;
   deleteNotification(orgId: string, userId: string, id: string): Promise<boolean>;
   getNotificationByEntity(orgId: string, type: string, entityId: string): Promise<Notification | undefined>;
+
+  // ─── Procurement Requests (Phase 9) ───────────────────────────────────────
+  getProcurementRequests(orgId: string, filters?: { status?: string; jobsiteId?: string; requestedBy?: string }): Promise<ProcurementRequest[]>;
+  getProcurementRequest(orgId: string, id: string): Promise<ProcurementRequest | undefined>;
+  createProcurementRequest(orgId: string, data: InsertProcurementRequest): Promise<ProcurementRequest>;
+  updateProcurementRequest(orgId: string, id: string, data: UpdateProcurementRequest): Promise<ProcurementRequest | undefined>;
+  deleteProcurementRequest(orgId: string, id: string): Promise<boolean>;
+  transitionProcurementStatus(orgId: string, id: string, data: UpdateProcurementStatus, actingUserId: string): Promise<ProcurementRequest | undefined>;
+
+  // ─── Procurement Request Items (Phase 9) ──────────────────────────────────
+  getProcurementRequestItems(orgId: string, procurementRequestId: string): Promise<ProcurementRequestItem[]>;
+  getProcurementRequestItem(orgId: string, id: string): Promise<ProcurementRequestItem | undefined>;
+  createProcurementRequestItem(orgId: string, procurementRequestId: string, data: InsertProcurementRequestItem): Promise<ProcurementRequestItem>;
+  updateProcurementRequestItem(orgId: string, id: string, data: UpdateProcurementRequestItem): Promise<ProcurementRequestItem | undefined>;
+  deleteProcurementRequestItem(orgId: string, id: string): Promise<boolean>;
+
+  // ─── Delivery Assignments (Phase 9) ───────────────────────────────────────
+  getDeliveryAssignments(orgId: string, filters?: { procurementRequestId?: string; deliveryRequestId?: string }): Promise<DeliveryAssignment[]>;
+  getDriverWorkload(orgId: string, driverId: string): Promise<{ activeDeliveries: DeliveryRequest[]; pendingProcurement: ProcurementRequest[] }>;
 
   // ─── Super-admin methods ──────────────────────────────────────────────────
   adminListOrgs(): Promise<Organization[]>;
@@ -2695,6 +2720,256 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     return rows[0] ? mapNotification(rows[0]) : undefined;
   }
+
+  // ─── Procurement Requests (Phase 9) ───────────────────────────────────────
+
+  async getProcurementRequests(orgId: string, filters?: { status?: string; jobsiteId?: string; requestedBy?: string }): Promise<ProcurementRequest[]> {
+    const conditions: SQL[] = [eq(t.procurementRequests.organizationId, orgId)];
+    if (filters?.status) conditions.push(eq(t.procurementRequests.status, filters.status));
+    if (filters?.jobsiteId) conditions.push(eq(t.procurementRequests.jobsiteId, filters.jobsiteId));
+    if (filters?.requestedBy) conditions.push(eq(t.procurementRequests.requestedBy, filters.requestedBy));
+    const rows = await db.select().from(t.procurementRequests).where(and(...conditions));
+    return rows.map(mapProcurementRequest);
+  }
+
+  async getProcurementRequest(orgId: string, id: string): Promise<ProcurementRequest | undefined> {
+    const rows = await db.select().from(t.procurementRequests)
+      .where(and(eq(t.procurementRequests.id, id), eq(t.procurementRequests.organizationId, orgId)));
+    return rows[0] ? mapProcurementRequest(rows[0]) : undefined;
+  }
+
+  async createProcurementRequest(orgId: string, data: InsertProcurementRequest): Promise<ProcurementRequest> {
+    const row: ProcurementRequestRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      jobsiteId: data.jobsiteId ?? null,
+      requestedBy: data.requestedBy,
+      approvedBy: null,
+      rejectedBy: null,
+      assignedDriverId: data.assignedDriverId ?? null,
+      status: data.status ?? "draft",
+      notes: data.notes ?? null,
+      neededByDate: data.neededByDate ?? null,
+      rejectionReason: null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.procurementRequests).values(row).returning();
+    return mapProcurementRequest(rows[0]);
+  }
+
+  async updateProcurementRequest(orgId: string, id: string, data: UpdateProcurementRequest): Promise<ProcurementRequest | undefined> {
+    const existing = await this.getProcurementRequest(orgId, id);
+    if (!existing) return undefined;
+    const set: Partial<ProcurementRequestRow> = {};
+    if (data.jobsiteId !== undefined) set.jobsiteId = data.jobsiteId ?? null;
+    if (data.requestedBy !== undefined) set.requestedBy = data.requestedBy;
+    if (data.assignedDriverId !== undefined) set.assignedDriverId = data.assignedDriverId ?? null;
+    if (data.status !== undefined) set.status = data.status;
+    if (data.notes !== undefined) set.notes = data.notes ?? null;
+    if (data.neededByDate !== undefined) set.neededByDate = data.neededByDate ?? null;
+    if (Object.keys(set).length === 0) return existing;
+    const rows = await db.update(t.procurementRequests).set(set)
+      .where(and(eq(t.procurementRequests.id, id), eq(t.procurementRequests.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapProcurementRequest(rows[0]) : undefined;
+  }
+
+  async deleteProcurementRequest(orgId: string, id: string): Promise<boolean> {
+    const existing = await this.getProcurementRequest(orgId, id);
+    if (!existing) return false;
+    if (existing.status !== "draft" && existing.status !== "cancelled") return false;
+    const result = await db.delete(t.procurementRequests)
+      .where(and(eq(t.procurementRequests.id, id), eq(t.procurementRequests.organizationId, orgId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  async transitionProcurementStatus(orgId: string, id: string, data: UpdateProcurementStatus, actingUserId: string): Promise<ProcurementRequest | undefined> {
+    const existing = await this.getProcurementRequest(orgId, id);
+    if (!existing) return undefined;
+
+    const set: Partial<ProcurementRequestRow> = {
+      status: data.status,
+    };
+
+    if (data.status === "approved") {
+      set.approvedBy = actingUserId;
+    } else if (data.status === "rejected") {
+      set.rejectedBy = actingUserId;
+      set.rejectionReason = data.rejectionReason ?? null;
+    } else if (data.status === "dispatched") {
+      const driverId = data.assignedDriverId ?? existing.assignedDriverId ?? null;
+      set.assignedDriverId = driverId;
+      await this._dispatchProcurementRequest(orgId, existing, driverId);
+    }
+
+    const result = await db.update(t.procurementRequests).set(set)
+      .where(and(eq(t.procurementRequests.id, id), eq(t.procurementRequests.organizationId, orgId)))
+      .returning();
+    return result[0] ? mapProcurementRequest(result[0]) : undefined;
+  }
+
+  private async _dispatchProcurementRequest(orgId: string, request: ProcurementRequest, driverId: string | null): Promise<void> {
+    const deliveryReq = await this.createDeliveryRequest(orgId, {
+      jobsiteId: request.jobsiteId ?? undefined,
+      requestedBy: request.requestedBy,
+      driverId: driverId ?? undefined,
+      description: `Auto-dispatched from procurement request`,
+      status: "dispatched",
+      notes: request.notes ?? undefined,
+      scheduledDate: request.neededByDate ?? undefined,
+    });
+
+    const now = new Date().toISOString();
+    await db.insert(t.deliveryAssignments).values({
+      id: randomUUID(),
+      organizationId: orgId,
+      procurementRequestId: request.id,
+      deliveryRequestId: deliveryReq.id,
+      createdAt: now,
+    });
+
+    const items = await this.getProcurementRequestItems(orgId, request.id);
+    for (const item of items) {
+      if (item.itemType === "inventory_item" && item.inventoryItemId) {
+        await this.createInventoryCheckout(orgId, {
+          inventoryItemId: item.inventoryItemId,
+          checkedOutBy: request.requestedBy,
+          jobsiteId: request.jobsiteId ?? undefined,
+          expectedReturnDate: undefined,
+        });
+      }
+    }
+  }
+
+  // ─── Procurement Request Items (Phase 9) ──────────────────────────────────
+
+  async getProcurementRequestItems(orgId: string, procurementRequestId: string): Promise<ProcurementRequestItem[]> {
+    const rows = await db.select().from(t.procurementRequestItems).where(and(
+      eq(t.procurementRequestItems.organizationId, orgId),
+      eq(t.procurementRequestItems.procurementRequestId, procurementRequestId),
+    ));
+    return rows.map(mapProcurementRequestItem);
+  }
+
+  async getProcurementRequestItem(orgId: string, id: string): Promise<ProcurementRequestItem | undefined> {
+    const rows = await db.select().from(t.procurementRequestItems)
+      .where(and(eq(t.procurementRequestItems.id, id), eq(t.procurementRequestItems.organizationId, orgId)));
+    return rows[0] ? mapProcurementRequestItem(rows[0]) : undefined;
+  }
+
+  async createProcurementRequestItem(orgId: string, procurementRequestId: string, data: InsertProcurementRequestItem): Promise<ProcurementRequestItem> {
+    const row: ProcurementRequestItemRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      procurementRequestId,
+      itemType: data.itemType,
+      inventoryItemId: data.inventoryItemId ?? null,
+      description: data.description,
+      quantity: data.quantity,
+      unit: data.unit ?? null,
+      fulfilledQuantity: data.fulfilledQuantity ?? null,
+      notes: data.notes ?? null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.procurementRequestItems).values(row).returning();
+    return mapProcurementRequestItem(rows[0]);
+  }
+
+  async updateProcurementRequestItem(orgId: string, id: string, data: UpdateProcurementRequestItem): Promise<ProcurementRequestItem | undefined> {
+    const existing = await this.getProcurementRequestItem(orgId, id);
+    if (!existing) return undefined;
+    const set: Partial<ProcurementRequestItemRow> = {};
+    if (data.itemType !== undefined) set.itemType = data.itemType;
+    if (data.inventoryItemId !== undefined) set.inventoryItemId = data.inventoryItemId ?? null;
+    if (data.description !== undefined) set.description = data.description;
+    if (data.quantity !== undefined) set.quantity = data.quantity;
+    if (data.unit !== undefined) set.unit = data.unit ?? null;
+    if (data.fulfilledQuantity !== undefined) set.fulfilledQuantity = data.fulfilledQuantity ?? null;
+    if (data.notes !== undefined) set.notes = data.notes ?? null;
+    if (Object.keys(set).length === 0) return existing;
+    const rows = await db.update(t.procurementRequestItems).set(set)
+      .where(and(eq(t.procurementRequestItems.id, id), eq(t.procurementRequestItems.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapProcurementRequestItem(rows[0]) : undefined;
+  }
+
+  async deleteProcurementRequestItem(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(t.procurementRequestItems)
+      .where(and(eq(t.procurementRequestItems.id, id), eq(t.procurementRequestItems.organizationId, orgId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ─── Delivery Assignments (Phase 9) ───────────────────────────────────────
+
+  async getDeliveryAssignments(orgId: string, filters?: { procurementRequestId?: string; deliveryRequestId?: string }): Promise<DeliveryAssignment[]> {
+    const conditions: SQL[] = [eq(t.deliveryAssignments.organizationId, orgId)];
+    if (filters?.procurementRequestId) conditions.push(eq(t.deliveryAssignments.procurementRequestId, filters.procurementRequestId));
+    if (filters?.deliveryRequestId) conditions.push(eq(t.deliveryAssignments.deliveryRequestId, filters.deliveryRequestId));
+    const rows = await db.select().from(t.deliveryAssignments).where(and(...conditions));
+    return rows.map(mapDeliveryAssignment);
+  }
+
+  async getDriverWorkload(orgId: string, driverId: string): Promise<{ activeDeliveries: DeliveryRequest[]; pendingProcurement: ProcurementRequest[] }> {
+    const deliveries = await db.select().from(t.deliveryRequests).where(and(
+      eq(t.deliveryRequests.organizationId, orgId),
+      eq(t.deliveryRequests.driverId, driverId),
+      notInArray(t.deliveryRequests.status, ["arrived", "departed"]),
+    ));
+    const procurement = await db.select().from(t.procurementRequests).where(and(
+      eq(t.procurementRequests.organizationId, orgId),
+      eq(t.procurementRequests.assignedDriverId, driverId),
+      notInArray(t.procurementRequests.status, ["delivered", "cancelled", "rejected"]),
+    ));
+    return {
+      activeDeliveries: deliveries.map(mapDeliveryRequest),
+      pendingProcurement: procurement.map(mapProcurementRequest),
+    };
+  }
+}
+
+function mapProcurementRequest(row: typeof t.procurementRequests.$inferSelect): ProcurementRequest {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    jobsiteId: row.jobsiteId ?? null,
+    requestedBy: row.requestedBy,
+    approvedBy: row.approvedBy ?? null,
+    rejectedBy: row.rejectedBy ?? null,
+    assignedDriverId: row.assignedDriverId ?? null,
+    status: row.status,
+    notes: row.notes ?? null,
+    neededByDate: row.neededByDate ?? null,
+    rejectionReason: row.rejectionReason ?? null,
+    createdAt: row.createdAt ?? null,
+  };
+}
+
+function mapProcurementRequestItem(row: typeof t.procurementRequestItems.$inferSelect): ProcurementRequestItem {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    procurementRequestId: row.procurementRequestId,
+    itemType: row.itemType,
+    inventoryItemId: row.inventoryItemId ?? null,
+    description: row.description,
+    quantity: row.quantity,
+    unit: row.unit ?? null,
+    fulfilledQuantity: row.fulfilledQuantity ?? null,
+    notes: row.notes ?? null,
+    createdAt: row.createdAt ?? null,
+  };
+}
+
+function mapDeliveryAssignment(row: typeof t.deliveryAssignments.$inferSelect): DeliveryAssignment {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    procurementRequestId: row.procurementRequestId,
+    deliveryRequestId: row.deliveryRequestId,
+    createdAt: row.createdAt ?? null,
+  };
 }
 
 function mapNotification(row: typeof t.notifications.$inferSelect): Notification {
