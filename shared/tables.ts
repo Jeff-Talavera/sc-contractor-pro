@@ -591,3 +591,17 @@ export const deliveryAssignments = pgTable("delivery_assignments", {
   deliveryRequestId: text("delivery_request_id").notNull(),
   createdAt: text("created_at"),
 });
+
+// ─── Phase 10: Invites ───────────────────────────────────────────────────────
+
+export const invites = pgTable("invites", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  email: text("email").notNull(),
+  role: text("role").notNull(),
+  invitedBy: text("invited_by").notNull(),
+  token: text("token").notNull().unique(),
+  expiresAt: text("expires_at").notNull(),
+  acceptedAt: text("accepted_at"),
+  createdAt: text("created_at").notNull(),
+});
