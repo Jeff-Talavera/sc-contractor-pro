@@ -36,6 +36,7 @@ import type {
   ProcurementRequest, InsertProcurementRequest, UpdateProcurementRequest, UpdateProcurementStatus,
   ProcurementRequestItem, InsertProcurementRequestItem, UpdateProcurementRequestItem,
   DeliveryAssignment,
+  Invite, InsertInvite,
 } from "@shared/schema";
 import { PORTFOLIO_SECTIONS } from "@shared/schema";
 import { randomUUID } from "crypto";
@@ -75,6 +76,7 @@ type NotificationRow = typeof t.notifications.$inferInsert;
 type ProcurementRequestRow = typeof t.procurementRequests.$inferInsert;
 type ProcurementRequestItemRow = typeof t.procurementRequestItems.$inferInsert;
 type DeliveryAssignmentRow = typeof t.deliveryAssignments.$inferInsert;
+type InviteRow = typeof t.invites.$inferInsert;
 
 // ─── Scoring logic ────────────────────────────────────────────────────────────
 
@@ -824,6 +826,17 @@ export interface IStorage {
   // ─── Delivery Assignments (Phase 9) ───────────────────────────────────────
   getDeliveryAssignments(orgId: string, filters?: { procurementRequestId?: string; deliveryRequestId?: string }): Promise<DeliveryAssignment[]>;
   getDriverWorkload(orgId: string, driverId: string): Promise<{ activeDeliveries: DeliveryRequest[]; pendingProcurement: ProcurementRequest[] }>;
+
+  // ─── Invites (Phase 10) ───────────────────────────────────────────────────
+  getInvites(orgId: string): Promise<Invite[]>;
+  getInviteByToken(token: string): Promise<Invite | undefined>;
+  createInvite(orgId: string, data: InsertInvite, invitedBy: string): Promise<Invite>;
+  acceptInvite(token: string): Promise<Invite | undefined>;
+  deleteInvite(orgId: string, id: string): Promise<boolean>;
+
+  // ─── User Management (Phase 10) ───────────────────────────────────────────
+  updateUserRole(orgId: string, userId: string, role: string): Promise<User | undefined>;
+  removeUserFromOrg(orgId: string, userId: string): Promise<boolean>;
 
   // ─── Super-admin methods ──────────────────────────────────────────────────
   adminListOrgs(): Promise<Organization[]>;
@@ -2927,6 +2940,73 @@ export class DatabaseStorage implements IStorage {
       pendingProcurement: procurement.map(mapProcurementRequest),
     };
   }
+
+  // ─── Invites (Phase 10) ───────────────────────────────────────────────────
+
+  async getInvites(orgId: string): Promise<Invite[]> {
+    const rows = await db.select().from(t.invites)
+      .where(and(eq(t.invites.organizationId, orgId), isNull(t.invites.acceptedAt)))
+      .orderBy(desc(t.invites.createdAt));
+    return rows.map(mapInvite);
+  }
+
+  async getInviteByToken(token: string): Promise<Invite | undefined> {
+    const rows = await db.select().from(t.invites).where(eq(t.invites.token, token));
+    return rows[0] ? mapInvite(rows[0]) : undefined;
+  }
+
+  async createInvite(orgId: string, data: InsertInvite, invitedBy: string): Promise<Invite> {
+    const row: InviteRow = {
+      id: randomUUID(),
+      organizationId: orgId,
+      email: data.email,
+      role: data.role,
+      invitedBy,
+      token: randomUUID().replace(/-/g, ""),
+      expiresAt: data.expiresAt,
+      acceptedAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    const rows = await db.insert(t.invites).values(row).returning();
+    return mapInvite(rows[0]);
+  }
+
+  async acceptInvite(token: string): Promise<Invite | undefined> {
+    const rows = await db.update(t.invites)
+      .set({ acceptedAt: new Date().toISOString() })
+      .where(eq(t.invites.token, token))
+      .returning();
+    return rows[0] ? mapInvite(rows[0]) : undefined;
+  }
+
+  async deleteInvite(orgId: string, id: string): Promise<boolean> {
+    const result = await db.delete(t.invites)
+      .where(and(eq(t.invites.id, id), eq(t.invites.organizationId, orgId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ─── User Management (Phase 10) ───────────────────────────────────────────
+
+  async updateUserRole(orgId: string, userId: string, role: string): Promise<User | undefined> {
+    const existing = await db.select().from(t.users)
+      .where(and(eq(t.users.id, userId), eq(t.users.organizationId, orgId)));
+    if (!existing[0]) return undefined;
+    const rows = await db.update(t.users).set({ role })
+      .where(and(eq(t.users.id, userId), eq(t.users.organizationId, orgId)))
+      .returning();
+    return rows[0] ? mapUser(rows[0]) : undefined;
+  }
+
+  async removeUserFromOrg(orgId: string, userId: string): Promise<boolean> {
+    const existing = await db.select().from(t.users)
+      .where(and(eq(t.users.id, userId), eq(t.users.organizationId, orgId)));
+    if (!existing[0]) return false;
+    const rows = await db.update(t.users).set({ userStatus: "inactive" })
+      .where(and(eq(t.users.id, userId), eq(t.users.organizationId, orgId)))
+      .returning();
+    return rows.length > 0;
+  }
 }
 
 function mapProcurementRequest(row: typeof t.procurementRequests.$inferSelect): ProcurementRequest {
@@ -3016,6 +3096,20 @@ export async function createNotificationForOrgAdmins(
   } catch (e) {
     console.error("Failed to create notifications:", e);
   }
+}
+
+function mapInvite(row: typeof t.invites.$inferSelect): Invite {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    email: row.email,
+    role: row.role,
+    invitedBy: row.invitedBy,
+    token: row.token,
+    expiresAt: row.expiresAt,
+    acceptedAt: row.acceptedAt ?? null,
+    createdAt: row.createdAt,
+  };
 }
 
 function mapPortfolioShare(row: typeof t.portfolioShares.$inferSelect): PortfolioShare {
