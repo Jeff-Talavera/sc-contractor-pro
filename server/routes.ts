@@ -25,6 +25,9 @@ import {
   insertPortfolioShareSchema,
   insertProcurementRequestSchema, updateProcurementRequestSchema, updateProcurementStatusSchema,
   insertProcurementRequestItemSchema, updateProcurementRequestItemSchema,
+  insertInviteSchema, updateUserRoleSchema,
+  insertJobsiteWorkerAssignmentSchema,
+  insertJobsiteViolationSchema, updateJobsiteViolationSchema,
 } from "@shared/schema";
 import type { VisibleSections } from "@shared/schema";
 import type { AiFinding, User, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
@@ -72,6 +75,15 @@ async function requireSuperAdmin(req: Request, res: Response, next: NextFunction
     return res.status(403).json({ message: "Forbidden" });
   }
   next();
+}
+
+function requireRole(...roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ message: "Insufficient permissions" });
+    }
+    next();
+  };
 }
 
 export async function registerRoutes(
@@ -136,6 +148,25 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Public Invite Accept Route (Phase 10) ─────────────────────────────────
+  // Registered BEFORE the global /api requireAuth so unauthenticated invitees
+  // can mark their invite accepted. Token is the only credential.
+
+  app.get("/api/invites/accept/:token", async (req, res) => {
+    try {
+      const invite = await storage.getInviteByToken(req.params.token);
+      if (!invite) return res.status(404).json({ message: "Invite not found" });
+      if (invite.acceptedAt) return res.status(410).json({ message: "Invite has already been accepted" });
+      const now = new Date().toISOString();
+      if (invite.expiresAt < now) return res.status(410).json({ message: "Invite has expired" });
+      const accepted = await storage.acceptInvite(req.params.token);
+      if (!accepted) return res.status(404).json({ message: "Invite not found" });
+      res.json({ invite: accepted, message: "Invite accepted. Please register or log in to join the organization." });
+    } catch {
+      res.status(500).json({ message: "Failed to accept invite" });
+    }
+  });
+
   // ─── Global auth guard for all remaining /api/* routes ─────────────────────
 
   app.use("/api", requireAuth);
@@ -166,8 +197,100 @@ export async function registerRoutes(
 
   // ─── Users ──────────────────────────────────────────────────────────────────
 
-  app.get("/api/users", async (req, res) => {
+  app.get("/api/users", requireRole("Admin", "Owner"), async (req, res) => {
     res.json(await storage.getUsersByOrg(req.user!.organizationId));
+  });
+
+  app.patch("/api/users/:id/role", requireRole("Owner"), async (req, res) => {
+    try {
+      const parsed = updateUserRoleSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      if (req.user!.id === req.params.id) {
+        return res.status(400).json({ message: "Cannot change your own role" });
+      }
+      const orgId = req.user!.organizationId;
+      const target = await storage.getUser(req.params.id);
+      if (!target || target.organizationId !== orgId) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      if (target.role === "Owner" && parsed.data.role !== "Owner") {
+        const orgUsers = await storage.getUsersByOrg(orgId);
+        const remainingOwners = orgUsers.filter(u => u.role === "Owner" && u.id !== target.id).length;
+        if (remainingOwners < 1) {
+          return res.status(400).json({ message: "Cannot demote the last Owner" });
+        }
+      }
+      const updated = await storage.updateUserRole(orgId, req.params.id, parsed.data.role);
+      if (!updated) return res.status(404).json({ message: "User not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update user role" });
+    }
+  });
+
+  app.delete("/api/users/:id", requireRole("Owner"), async (req, res) => {
+    try {
+      if (req.user!.id === req.params.id) {
+        return res.status(400).json({ message: "Cannot remove yourself" });
+      }
+      const orgId = req.user!.organizationId;
+      const target = await storage.getUser(req.params.id);
+      if (!target || target.organizationId !== orgId) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      if (target.role === "Owner") {
+        const orgUsers = await storage.getUsersByOrg(orgId);
+        const remainingOwners = orgUsers.filter(u => u.role === "Owner" && u.id !== target.id).length;
+        if (remainingOwners < 1) {
+          return res.status(400).json({ message: "Cannot remove the last Owner" });
+        }
+      }
+      const removed = await storage.removeUserFromOrg(orgId, req.params.id);
+      if (!removed) return res.status(404).json({ message: "User not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to remove user" });
+    }
+  });
+
+  // ─── Invites (Phase 10) ────────────────────────────────────────────────────
+
+  app.get("/api/invites", requireRole("Admin", "Owner"), async (req, res) => {
+    try {
+      const invites = await storage.getInvites(req.user!.organizationId);
+      res.json(invites);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch invites" });
+    }
+  });
+
+  app.post("/api/invites", requireRole("Admin", "Owner"), async (req, res) => {
+    try {
+      const parsed = insertInviteSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      const existing = await storage.getInvites(orgId);
+      const duplicate = existing.find(
+        i => i.email.toLowerCase() === parsed.data.email.toLowerCase() && !i.acceptedAt
+      );
+      if (duplicate) {
+        return res.status(409).json({ message: "A pending invite already exists for this email" });
+      }
+      const invite = await storage.createInvite(orgId, parsed.data, req.user!.id);
+      res.status(201).json(invite);
+    } catch {
+      res.status(500).json({ message: "Failed to create invite" });
+    }
+  });
+
+  app.delete("/api/invites/:id", requireRole("Admin", "Owner"), async (req, res) => {
+    try {
+      const deleted = await storage.deleteInvite(req.user!.organizationId, req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Invite not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete invite" });
+    }
   });
 
   // ─── Clients ────────────────────────────────────────────────────────────────
@@ -984,7 +1107,7 @@ export async function registerRoutes(
     res.json(company);
   });
 
-  app.post("/api/contractor-companies", async (req, res) => {
+  app.post("/api/contractor-companies", requireRole("Admin", "Owner"), async (req, res) => {
     const parsed = insertContractorCompanySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
     // Prevent duplicate names (case-insensitive check)
@@ -997,7 +1120,7 @@ export async function registerRoutes(
     res.status(201).json(company);
   });
 
-  app.patch("/api/contractor-companies/:id", async (req, res) => {
+  app.patch("/api/contractor-companies/:id", requireRole("Admin", "Owner"), async (req, res) => {
     const company = await storage.getContractorCompany(req.params.id);
     if (!company) return res.status(404).json({ message: "Contractor company not found" });
     const parsed = updateContractorCompanySchema.safeParse(req.body);
@@ -1031,7 +1154,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/worker-certifications", async (req, res) => {
+  app.post("/api/worker-certifications", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const parsed = insertWorkerCertificationSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
@@ -1059,7 +1182,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/worker-certifications/:id", async (req, res) => {
+  app.patch("/api/worker-certifications/:id", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const parsed = updateWorkerCertificationSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
@@ -1077,7 +1200,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/worker-certifications/:id", async (req, res) => {
+  app.delete("/api/worker-certifications/:id", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const deleted = await storage.deleteWorkerCertification(req.user!.organizationId, req.params.id);
       if (!deleted) return res.status(404).json({ message: "Worker certification not found" });
@@ -1115,7 +1238,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/certificates-of-insurance", async (req, res) => {
+  app.post("/api/certificates-of-insurance", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const parsed = insertCertificateOfInsuranceSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
@@ -1145,7 +1268,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/certificates-of-insurance/:id", async (req, res) => {
+  app.patch("/api/certificates-of-insurance/:id", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const parsed = updateCertificateOfInsuranceSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
@@ -1163,7 +1286,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/certificates-of-insurance/:id", async (req, res) => {
+  app.delete("/api/certificates-of-insurance/:id", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const deleted = await storage.deleteCertificateOfInsurance(req.user!.organizationId, req.params.id);
       if (!deleted) return res.status(404).json({ message: "Certificate of insurance not found" });
@@ -1359,7 +1482,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/drivers", async (req, res) => {
+  app.post("/api/drivers", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const parsed = insertDriverSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
@@ -1370,7 +1493,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/drivers/:id", async (req, res) => {
+  app.patch("/api/drivers/:id", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const parsed = updateDriverSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
@@ -1382,7 +1505,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/drivers/:id", async (req, res) => {
+  app.delete("/api/drivers/:id", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const deleted = await storage.deleteDriver(req.user!.organizationId, req.params.id);
       if (!deleted) return res.status(404).json({ message: "Driver not found" });
@@ -1420,7 +1543,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/delivery-requests", async (req, res) => {
+  app.post("/api/delivery-requests", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const parsed = insertDeliveryRequestSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
@@ -1431,7 +1554,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/delivery-requests/:id", async (req, res) => {
+  app.patch("/api/delivery-requests/:id", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const parsed = updateDeliveryRequestSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
@@ -1467,7 +1590,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/delivery-requests/:id", async (req, res) => {
+  app.delete("/api/delivery-requests/:id", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const deleted = await storage.deleteDeliveryRequest(req.user!.organizationId, req.params.id);
       if (!deleted) return res.status(404).json({ message: "Delivery request not found" });
@@ -1545,7 +1668,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/inventory-items", async (req, res) => {
+  app.post("/api/inventory-items", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const parsed = insertInventoryItemSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
@@ -1556,7 +1679,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/inventory-items/:id", async (req, res) => {
+  app.patch("/api/inventory-items/:id", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const parsed = updateInventoryItemSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
@@ -1568,7 +1691,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/inventory-items/:id", async (req, res) => {
+  app.delete("/api/inventory-items/:id", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const deleted = await storage.deleteInventoryItem(req.user!.organizationId, req.params.id);
       if (!deleted) return res.status(404).json({ message: "Inventory item not found" });
@@ -1742,7 +1865,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/portfolio-shares", async (req, res) => {
+  app.post("/api/portfolio-shares", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const parsed = insertPortfolioShareSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
@@ -1754,7 +1877,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/portfolio-shares/:id", async (req, res) => {
+  app.delete("/api/portfolio-shares/:id", requireRole("Admin", "Owner"), async (req, res) => {
     try {
       const revoked = await storage.revokePortfolioShare(req.user!.organizationId, req.params.id);
       if (!revoked) return res.status(404).json({ message: "Portfolio share not found" });
@@ -2111,6 +2234,113 @@ export async function registerRoutes(
       res.json(await storage.getDeliveryAssignments(orgId, filters));
     } catch {
       res.status(500).json({ message: "Failed to fetch delivery assignments" });
+    }
+  });
+
+  // ─── Compliance Engine (Phase 11) ───────────────────────────────────────────
+
+  app.get("/api/jobsites/:id/workers", async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      const workers = await storage.getJobsiteWorkerAssignments(req.params.id, req.user!.organizationId);
+      res.json(workers);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch worker assignments" });
+    }
+  });
+
+  app.post("/api/jobsites/:id/workers", requireRole("Admin", "Owner"), async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      const parsed = insertJobsiteWorkerAssignmentSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgUsers = await storage.getUsersByOrg(req.user!.organizationId);
+      if (!orgUsers.find(u => u.id === parsed.data.userId)) {
+        return res.status(400).json({ message: "User not found in your organization" });
+      }
+      const assignment = await storage.createJobsiteWorkerAssignment(req.params.id, req.user!.organizationId, parsed.data);
+      res.status(201).json(assignment);
+    } catch {
+      res.status(500).json({ message: "Failed to create worker assignment" });
+    }
+  });
+
+  app.delete("/api/jobsites/:id/workers/:assignmentId", requireRole("Admin", "Owner"), async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      await storage.deleteJobsiteWorkerAssignment(req.params.assignmentId, req.user!.organizationId);
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete worker assignment" });
+    }
+  });
+
+  app.get("/api/jobsites/:id/compliance", async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      const audit = await storage.getJobsiteComplianceAudit(req.params.id, req.user!.organizationId);
+      if (!audit) return res.status(404).json({ message: "Jobsite not found" });
+      res.json(audit);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch compliance audit" });
+    }
+  });
+
+  app.get("/api/compliance/summary", async (req, res) => {
+    try {
+      const summary = await storage.getOrgComplianceSummary(req.user!.organizationId);
+      res.json(summary);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch compliance summary" });
+    }
+  });
+
+  app.get("/api/jobsites/:id/violations", async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      const violations = await storage.getJobsiteViolations(req.params.id, req.user!.organizationId);
+      res.json(violations);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch violations" });
+    }
+  });
+
+  app.post("/api/jobsites/:id/violations", requireRole("Admin", "Owner"), async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      const parsed = insertJobsiteViolationSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const violation = await storage.createJobsiteViolation(req.params.id, req.user!.organizationId, parsed.data);
+      res.status(201).json(violation);
+    } catch {
+      res.status(500).json({ message: "Failed to create violation" });
+    }
+  });
+
+  app.patch("/api/jobsites/:id/violations/:vid", requireRole("Admin", "Owner"), async (req, res) => {
+    try {
+      const jobsite = await storage.getJobsite(req.params.id);
+      if (!jobsite) return res.status(404).json({ message: "Jobsite not found" });
+      if (jobsite.organizationId !== req.user!.organizationId) return res.status(403).json({ message: "Forbidden" });
+      const parsed = updateJobsiteViolationSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const updated = await storage.updateJobsiteViolation(req.params.vid, req.user!.organizationId, parsed.data);
+      if (!updated) return res.status(404).json({ message: "Violation not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update violation" });
     }
   });
 

@@ -591,3 +591,55 @@ export const deliveryAssignments = pgTable("delivery_assignments", {
   deliveryRequestId: text("delivery_request_id").notNull(),
   createdAt: text("created_at"),
 });
+
+// ─── Phase 11: Compliance Engine ─────────────────────────────────────────────
+
+export const jobsiteWorkerAssignments = pgTable("jobsite_worker_assignments", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  jobsiteId: text("jobsite_id").notNull().references(() => jobsites.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  scopeOfWork: text("scope_of_work").notNull(),
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const complianceRequirements = pgTable("compliance_requirements", {
+  id: text("id").primaryKey(),
+  jobsiteFlag: text("jobsite_flag").notNull(),
+  jurisdiction: text("jurisdiction").notNull(),
+  requiredCertType: text("required_cert_type").notNull(),
+  description: text("description").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: text("created_at").notNull(),
+});
+
+export const jobsiteViolations = pgTable("jobsite_violations", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id),
+  jobsiteId: text("jobsite_id").notNull().references(() => jobsites.id),
+  source: text("source").notNull(),
+  violationType: text("violation_type").notNull(),
+  description: text("description").notNull(),
+  issuedDate: text("issued_date").notNull(),
+  resolvedDate: text("resolved_date"),
+  severity: text("severity").notNull(),
+  referenceNumber: text("reference_number"),
+  status: text("status").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+// ─── Phase 10: Invites ───────────────────────────────────────────────────────
+
+export const invites = pgTable("invites", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  email: text("email").notNull(),
+  role: text("role").notNull(),
+  invitedBy: text("invited_by").notNull(),
+  token: text("token").notNull().unique(),
+  expiresAt: text("expires_at").notNull(),
+  acceptedAt: text("accepted_at"),
+  createdAt: text("created_at").notNull(),
+});

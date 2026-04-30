@@ -136,6 +136,14 @@ app.use((req, res, next) => {
     console.error("Super-admin seed error:", err);
   }
 
+  // Seed compliance requirements (idempotent via seedMeta marker)
+  try {
+    const { seedComplianceRequirements } = await import("./seed");
+    await seedComplianceRequirements();
+  } catch (err) {
+    console.error("Compliance requirements seed error:", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
