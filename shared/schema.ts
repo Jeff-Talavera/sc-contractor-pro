@@ -1311,4 +1311,34 @@ export const insertDeliveryAssignmentSchema = z.object({
   deliveryRequestId: z.string().min(1, "Delivery request is required"),
 });
 
+// ─── Phase 10: Invites ───────────────────────────────────────────────────────
+
+export interface Invite {
+  id: string;
+  organizationId: string;
+  email: string;
+  role: string;
+  invitedBy: string;
+  token: string;
+  expiresAt: string;
+  acceptedAt?: string | null;
+  createdAt: string;
+}
+
+export const insertInviteSchema = z.object({
+  email: z.string().email("Valid email is required"),
+  role: z.enum(["Owner", "Admin", "Inspector"]),
+  expiresAt: z.string().min(1, "Expiration date is required"),
+});
+
+export type InsertInvite = z.infer<typeof insertInviteSchema>;
+
+// ─── Phase 10: User Role Management ──────────────────────────────────────────
+
+export const updateUserRoleSchema = z.object({
+  role: z.enum(["Owner", "Admin", "Inspector"]),
+});
+
+export type UpdateUserRole = z.infer<typeof updateUserRoleSchema>;
+
 export type InsertDeliveryAssignment = z.infer<typeof insertDeliveryAssignmentSchema>;
