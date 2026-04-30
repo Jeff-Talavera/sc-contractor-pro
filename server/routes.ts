@@ -23,6 +23,8 @@ import {
   insertInventoryConditionReportSchema,
   insertInventoryServiceTicketSchema, updateInventoryServiceTicketSchema,
   insertPortfolioShareSchema,
+  insertProcurementRequestSchema, updateProcurementRequestSchema, updateProcurementStatusSchema,
+  insertProcurementRequestItemSchema, updateProcurementRequestItemSchema,
 } from "@shared/schema";
 import type { VisibleSections } from "@shared/schema";
 import type { AiFinding, User, EmployeeProfile, ScheduleEntry, Timesheet, TimesheetEntry } from "@shared/schema";
@@ -1335,6 +1337,18 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/drivers/:id/workload", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const driver = await storage.getDriver(orgId, req.params.id);
+      if (!driver) return res.status(404).json({ message: "Driver not found" });
+      const workload = await storage.getDriverWorkload(orgId, req.params.id);
+      res.json(workload);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch driver workload" });
+    }
+  });
+
   app.get("/api/drivers/:id", async (req, res) => {
     try {
       const driver = await storage.getDriver(req.user!.organizationId, req.params.id);
@@ -1873,6 +1887,230 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch {
       res.status(500).json({ message: "Failed to delete notification" });
+    }
+  });
+
+  // ─── Procurement Requests (Phase 9) ──────────────────────────────────────
+
+  app.get("/api/procurement-requests", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const { status, jobsiteId, requestedBy } = req.query as {
+        status?: string; jobsiteId?: string; requestedBy?: string;
+      };
+      const filters: { status?: string; jobsiteId?: string; requestedBy?: string } = {};
+      if (typeof status === "string" && status) filters.status = status;
+      if (typeof jobsiteId === "string" && jobsiteId) filters.jobsiteId = jobsiteId;
+      if (typeof requestedBy === "string" && requestedBy) filters.requestedBy = requestedBy;
+      res.json(await storage.getProcurementRequests(orgId, filters));
+    } catch {
+      res.status(500).json({ message: "Failed to fetch procurement requests" });
+    }
+  });
+
+  app.get("/api/procurement-requests/:id", async (req, res) => {
+    try {
+      const pr = await storage.getProcurementRequest(req.user!.organizationId, req.params.id);
+      if (!pr) return res.status(404).json({ message: "Procurement request not found" });
+      res.json(pr);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch procurement request" });
+    }
+  });
+
+  app.post("/api/procurement-requests", async (req, res) => {
+    try {
+      const parsed = insertProcurementRequestSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const pr = await storage.createProcurementRequest(req.user!.organizationId, parsed.data);
+      res.status(201).json(pr);
+    } catch {
+      res.status(500).json({ message: "Failed to create procurement request" });
+    }
+  });
+
+  app.patch("/api/procurement-requests/:id", async (req, res) => {
+    try {
+      const parsed = updateProcurementRequestSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const updated = await storage.updateProcurementRequest(req.user!.organizationId, req.params.id, parsed.data);
+      if (!updated) return res.status(404).json({ message: "Procurement request not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update procurement request" });
+    }
+  });
+
+  app.delete("/api/procurement-requests/:id", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const existing = await storage.getProcurementRequest(orgId, req.params.id);
+      if (!existing) return res.status(404).json({ message: "Procurement request not found" });
+      if (existing.status !== "draft" && existing.status !== "cancelled") {
+        return res.status(400).json({ message: "Only draft or cancelled requests can be deleted" });
+      }
+      const deleted = await storage.deleteProcurementRequest(orgId, req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Procurement request not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete procurement request" });
+    }
+  });
+
+  app.patch("/api/procurement-requests/:id/status", async (req, res) => {
+    try {
+      const parsed = updateProcurementStatusSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      const existing = await storage.getProcurementRequest(orgId, req.params.id);
+      if (!existing) return res.status(404).json({ message: "Procurement request not found" });
+
+      const isAdminOrOwner = req.user!.role === "Admin" || req.user!.role === "Owner";
+      const newStatus = parsed.data.status;
+
+      if (newStatus === "approved" || newStatus === "rejected" || newStatus === "dispatched" || newStatus === "delivered") {
+        if (!isAdminOrOwner) return res.status(403).json({ message: "Forbidden" });
+      } else if (newStatus === "cancelled") {
+        if (!isAdminOrOwner && existing.requestedBy !== req.user!.id) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+      }
+
+      const updated = await storage.transitionProcurementStatus(orgId, req.params.id, parsed.data, req.user!.id);
+      if (!updated) return res.status(404).json({ message: "Procurement request not found" });
+
+      const reqId = updated.id;
+      if (newStatus === "submitted") {
+        createNotificationForOrgAdmins(
+          orgId,
+          "procurement_submitted",
+          "New Procurement Request",
+          `A new procurement request has been submitted`,
+          "procurement_request",
+          reqId,
+        ).catch(console.error);
+      } else if (newStatus === "approved") {
+        storage.createNotification({
+          organizationId: orgId,
+          userId: updated.requestedBy,
+          type: "procurement_approved",
+          title: "Request Approved",
+          message: "Your procurement request has been approved",
+          entityType: "procurement_request",
+          entityId: reqId,
+        }).catch(console.error);
+      } else if (newStatus === "rejected") {
+        storage.createNotification({
+          organizationId: orgId,
+          userId: updated.requestedBy,
+          type: "procurement_rejected",
+          title: "Request Rejected",
+          message: "Your procurement request has been rejected",
+          entityType: "procurement_request",
+          entityId: reqId,
+        }).catch(console.error);
+      } else if (newStatus === "dispatched") {
+        storage.createNotification({
+          organizationId: orgId,
+          userId: updated.requestedBy,
+          type: "procurement_dispatched",
+          title: "Request Dispatched",
+          message: "Your procurement request has been dispatched",
+          entityType: "procurement_request",
+          entityId: reqId,
+        }).catch(console.error);
+      } else if (newStatus === "delivered") {
+        storage.createNotification({
+          organizationId: orgId,
+          userId: updated.requestedBy,
+          type: "procurement_delivered",
+          title: "Request Delivered",
+          message: "Your procurement request has been delivered",
+          entityType: "procurement_request",
+          entityId: reqId,
+        }).catch(console.error);
+      }
+
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update procurement status" });
+    }
+  });
+
+  // ─── Procurement Request Items (Phase 9) ─────────────────────────────────
+
+  app.get("/api/procurement-requests/:id/items", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const pr = await storage.getProcurementRequest(orgId, req.params.id);
+      if (!pr) return res.status(404).json({ message: "Procurement request not found" });
+      const items = await storage.getProcurementRequestItems(orgId, req.params.id);
+      res.json(items);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch procurement items" });
+    }
+  });
+
+  app.post("/api/procurement-requests/:id/items", async (req, res) => {
+    try {
+      const parsed = insertProcurementRequestItemSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const orgId = req.user!.organizationId;
+      const pr = await storage.getProcurementRequest(orgId, req.params.id);
+      if (!pr) return res.status(404).json({ message: "Procurement request not found" });
+      const item = await storage.createProcurementRequestItem(orgId, req.params.id, parsed.data);
+      res.status(201).json(item);
+    } catch {
+      res.status(500).json({ message: "Failed to create procurement item" });
+    }
+  });
+
+  app.get("/api/procurement-request-items/:id", async (req, res) => {
+    try {
+      const item = await storage.getProcurementRequestItem(req.user!.organizationId, req.params.id);
+      if (!item) return res.status(404).json({ message: "Procurement item not found" });
+      res.json(item);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch procurement item" });
+    }
+  });
+
+  app.patch("/api/procurement-request-items/:id", async (req, res) => {
+    try {
+      const parsed = updateProcurementRequestItemSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      const updated = await storage.updateProcurementRequestItem(req.user!.organizationId, req.params.id, parsed.data);
+      if (!updated) return res.status(404).json({ message: "Procurement item not found" });
+      res.json(updated);
+    } catch {
+      res.status(500).json({ message: "Failed to update procurement item" });
+    }
+  });
+
+  app.delete("/api/procurement-request-items/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteProcurementRequestItem(req.user!.organizationId, req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Procurement item not found" });
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete procurement item" });
+    }
+  });
+
+  // ─── Delivery Assignments (Phase 9) ──────────────────────────────────────
+
+  app.get("/api/delivery-assignments", async (req, res) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const { procurementRequestId, deliveryRequestId } = req.query as {
+        procurementRequestId?: string; deliveryRequestId?: string;
+      };
+      const filters: { procurementRequestId?: string; deliveryRequestId?: string } = {};
+      if (typeof procurementRequestId === "string" && procurementRequestId) filters.procurementRequestId = procurementRequestId;
+      if (typeof deliveryRequestId === "string" && deliveryRequestId) filters.deliveryRequestId = deliveryRequestId;
+      res.json(await storage.getDeliveryAssignments(orgId, filters));
+    } catch {
+      res.status(500).json({ message: "Failed to fetch delivery assignments" });
     }
   });
 
