@@ -144,6 +144,14 @@ app.use((req, res, next) => {
     console.error("Compliance requirements seed error:", err);
   }
 
+  // One-time data fix: correct ssm_cert -> ssm_license (idempotent, runs unconditionally)
+  try {
+    const { fixSsmCertToSsmLicense } = await import("./seed");
+    await fixSsmCertToSsmLicense();
+  } catch (err) {
+    console.error("ssm_cert data fix error:", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

@@ -254,7 +254,7 @@ const COMPLIANCE_REQUIREMENT_SEEDS: Array<{
   { jobsiteFlag: "hasCrane", jurisdiction: "federal", requiredCertType: "osha_30", description: "OSHA 30-hr required for crane operations" },
   { jobsiteFlag: "hasExcavation", jurisdiction: "federal", requiredCertType: "osha_30", description: "OSHA 30-hr required for excavation work" },
   { jobsiteFlag: "hasBin", jurisdiction: "nyc", requiredCertType: "sst_card", description: "NYC SST card required on all covered sites" },
-  { jobsiteFlag: "hasBin", jurisdiction: "nyc", requiredCertType: "ssm_cert", description: "NYC Site Safety Manager cert required on covered sites" },
+  { jobsiteFlag: "hasBin", jurisdiction: "nyc", requiredCertType: "ssm_license", description: "NYC Site Safety Manager cert required on covered sites" },
 ];
 
 export async function seedComplianceRequirements() {
@@ -281,6 +281,16 @@ export async function seedComplianceRequirements() {
   }).onConflictDoNothing();
 
   console.log("Compliance requirements seed complete.");
+}
+
+export async function fixSsmCertToSsmLicense() {
+  const result = await db.update(t.complianceRequirements)
+    .set({ requiredCertType: "ssm_license" })
+    .where(eq(t.complianceRequirements.requiredCertType, "ssm_cert"));
+  const rowCount = (result as any)?.rowCount ?? (result as any)?.changes ?? 0;
+  if (rowCount > 0) {
+    console.log(`Fixed ${rowCount} compliance requirement(s): ssm_cert -> ssm_license.`);
+  }
 }
 
 const SUPER_ADMIN_ORG_ID = "org-system";
