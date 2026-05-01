@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation, Link } from "wouter";
-import type { Client, Jobsite, Inspection, InspectionTemplate, User, JobsitePermit, JobsiteExternalEvent, IndependentContractor, ContractorJobsiteAssignment, TradeCompany, JobsiteTradeAssignment, TradeAssignmentWithDetails } from "@shared/schema";
-import { insertJobsiteSchema } from "@shared/schema";
+import type { Client, Jobsite, Inspection, InspectionTemplate, User, Organization, JobsitePermit, JobsiteExternalEvent, IndependentContractor, ContractorJobsiteAssignment, TradeCompany, JobsiteTradeAssignment, TradeAssignmentWithDetails, JobsiteWorkerAssignmentRow, JobsiteViolationRow, JobsiteComplianceAudit } from "@shared/schema";
+import { insertJobsiteSchema, insertJobsiteWorkerAssignmentSchema, insertJobsiteViolationSchema, VIOLATION_SOURCES, VIOLATION_SEVERITIES, VIOLATION_STATUSES } from "@shared/schema";
+import { z } from "zod";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -498,6 +500,536 @@ function JobsiteTradesTab({ jobsiteId }: { jobsiteId: string }) {
   );
 }
 
+function complianceStatusBadge(status: string) {
+  if (status === "compliant") return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Compliant</Badge>;
+  if (status === "expired") return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Expired</Badge>;
+  return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">Missing</Badge>;
+}
+
+function compliancePercentBadge(pct: number) {
+  if (pct >= 80) return <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-base px-3 py-1">{pct}%</Badge>;
+  if (pct >= 50) return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-base px-3 py-1">{pct}%</Badge>;
+  return <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-base px-3 py-1">{pct}%</Badge>;
+}
+
+function severityBadge(sev: string) {
+  if (sev === "stop_work" || sev === "willful") return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">{sev.replace("_", " ")}</Badge>;
+  if (sev === "serious") return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">serious</Badge>;
+  return <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">{sev}</Badge>;
+}
+
+function violationStatusBadge(s: string) {
+  if (s === "open") return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">open</Badge>;
+  if (s === "contested") return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">contested</Badge>;
+  return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">resolved</Badge>;
+}
+
+function AssignWorkerDialog({ jobsiteId, open, onOpenChange }: { jobsiteId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { toast } = useToast();
+  const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
+  const form = useForm<z.infer<typeof insertJobsiteWorkerAssignmentSchema>>({
+    resolver: zodResolver(insertJobsiteWorkerAssignmentSchema),
+    defaultValues: { userId: "", scopeOfWork: "", startDate: "", endDate: "" },
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (data: z.infer<typeof insertJobsiteWorkerAssignmentSchema>) => {
+      const payload = { ...data, endDate: data.endDate || undefined };
+      const res = await apiRequest("POST", `/api/jobsites/${jobsiteId}/workers`, payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobsites", jobsiteId, "workers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/jobsites", jobsiteId, "compliance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/compliance/summary"] });
+      form.reset();
+      onOpenChange(false);
+      toast({ title: "Worker assigned" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Assign Worker</DialogTitle></DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(d => mutation.mutate(d))} className="space-y-4">
+            <FormField control={form.control} name="userId" render={({ field }) => (
+              <FormItem>
+                <FormLabel>User</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-worker-user"><SelectValue placeholder="Select user" /></SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {(users ?? []).map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="scopeOfWork" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Scope of Work</FormLabel>
+                <FormControl><Input placeholder="e.g., Electrical rough-in" {...field} data-testid="input-worker-scope" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <div className="grid grid-cols-2 gap-3">
+              <FormField control={form.control} name="startDate" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Start Date</FormLabel>
+                  <FormControl><Input type="date" {...field} data-testid="input-worker-start" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="endDate" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>End Date</FormLabel>
+                  <FormControl><Input type="date" {...field} data-testid="input-worker-end" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button type="submit" disabled={mutation.isPending} data-testid="button-confirm-assign-worker">
+                {mutation.isPending ? "Assigning…" : "Assign"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WorkersTab({ jobsiteId, canEdit }: { jobsiteId: string; canEdit: boolean }) {
+  const { toast } = useToast();
+  const [showAssign, setShowAssign] = useState(false);
+  const { data: workers, isLoading } = useQuery<JobsiteWorkerAssignmentRow[]>({
+    queryKey: ["/api/jobsites", jobsiteId, "workers"],
+  });
+  const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
+  const userMap = new Map(users?.map(u => [u.id, u]) ?? []);
+
+  const removeMutation = useMutation({
+    mutationFn: (assignmentId: string) => apiRequest("DELETE", `/api/jobsites/${jobsiteId}/workers/${assignmentId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobsites", jobsiteId, "workers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/jobsites", jobsiteId, "compliance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/compliance/summary"] });
+      toast({ title: "Worker removed" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  if (isLoading) {
+    return <div className="space-y-2"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {canEdit && (
+        <div className="flex items-center justify-end">
+          <Button size="sm" variant="outline" onClick={() => setShowAssign(true)} data-testid="button-assign-worker">
+            <Plus className="h-4 w-4 mr-1" /> Assign Worker
+          </Button>
+        </div>
+      )}
+      {(!workers || workers.length === 0) ? (
+        <div className="text-center py-8 text-muted-foreground">
+          <UserCheck className="h-10 w-10 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">No workers assigned to this jobsite.</p>
+        </div>
+      ) : (
+        <div className="rounded-md border overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Scope of Work</TableHead>
+                <TableHead>Start Date</TableHead>
+                <TableHead>End Date</TableHead>
+                {canEdit && <TableHead></TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {workers.map(w => (
+                <TableRow key={w.id} data-testid={`row-worker-${w.id}`}>
+                  <TableCell className="text-sm font-medium">{userMap.get(w.userId)?.name ?? w.userId}</TableCell>
+                  <TableCell className="text-sm">{w.scopeOfWork}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{w.startDate}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{w.endDate ?? "—"}</TableCell>
+                  {canEdit && (
+                    <TableCell>
+                      <Button
+                        variant="ghost" size="icon" className="h-7 w-7"
+                        data-testid={`button-remove-worker-${w.id}`}
+                        onClick={() => {
+                          if (window.confirm("Remove this worker assignment?")) removeMutation.mutate(w.id);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                      </Button>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      <AssignWorkerDialog jobsiteId={jobsiteId} open={showAssign} onOpenChange={setShowAssign} />
+    </div>
+  );
+}
+
+function ComplianceAuditTab({ jobsiteId }: { jobsiteId: string }) {
+  const { data: audit, isLoading } = useQuery<JobsiteComplianceAudit>({
+    queryKey: ["/api/jobsites", jobsiteId, "compliance"],
+  });
+
+  if (isLoading) {
+    return <div className="space-y-2"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>;
+  }
+
+  if (!audit) {
+    return <div className="text-center py-8 text-muted-foreground text-sm">No compliance data.</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-4 p-3 rounded-md bg-muted/50">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Overall compliance:</span>
+          {compliancePercentBadge(audit.compliancePercent)}
+        </div>
+        <span className="text-muted-foreground">|</span>
+        <div className="flex items-center gap-2 text-sm">
+          <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+          <span>{audit.violationCount} open violation{audit.violationCount !== 1 ? "s" : ""}</span>
+        </div>
+      </div>
+
+      {audit.workers.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground text-sm">
+          No workers assigned to this jobsite.
+        </div>
+      ) : audit.workers.every(w => w.requiredCerts.length === 0) ? (
+        <div className="text-center py-8 text-muted-foreground text-sm">
+          No compliance requirements apply to this jobsite's current configuration.
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {audit.workers.map(w => (
+            <div key={w.userId} data-testid={`section-compliance-worker-${w.userId}`}>
+              <div className="mb-2">
+                <p className="font-medium text-sm">{w.userName}</p>
+                <p className="text-xs text-muted-foreground">{w.scopeOfWork}</p>
+              </div>
+              {w.requiredCerts.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">No required certs.</p>
+              ) : (
+                <div className="rounded-md border overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Cert Type</TableHead>
+                        <TableHead>Jurisdiction</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {w.requiredCerts.map((c, idx) => (
+                        <TableRow key={`${w.userId}-${c.certType}-${idx}`}>
+                          <TableCell className="text-sm">{c.certType}</TableCell>
+                          <TableCell className="text-sm">{c.jurisdiction}</TableCell>
+                          <TableCell className="text-sm">{c.description}</TableCell>
+                          <TableCell>{complianceStatusBadge(c.status)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddViolationDialog({ jobsiteId, open, onOpenChange }: { jobsiteId: string; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { toast } = useToast();
+  const form = useForm<z.infer<typeof insertJobsiteViolationSchema>>({
+    resolver: zodResolver(insertJobsiteViolationSchema),
+    defaultValues: {
+      source: "dob",
+      violationType: "",
+      description: "",
+      issuedDate: "",
+      severity: "other",
+      referenceNumber: "",
+      status: "open",
+    },
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (data: z.infer<typeof insertJobsiteViolationSchema>) => {
+      const payload = { ...data, referenceNumber: data.referenceNumber || undefined, resolvedDate: data.resolvedDate || undefined };
+      const res = await apiRequest("POST", `/api/jobsites/${jobsiteId}/violations`, payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobsites", jobsiteId, "violations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/compliance/summary"] });
+      form.reset();
+      onOpenChange(false);
+      toast({ title: "Violation added" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Add Violation</DialogTitle></DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(d => mutation.mutate(d))} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <FormField control={form.control} name="source" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Source</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-violation-source"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {VIOLATION_SOURCES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="severity" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Severity</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger data-testid="select-violation-severity"><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {VIOLATION_SEVERITIES.map(s => <SelectItem key={s} value={s}>{s.replace("_", " ")}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+            <FormField control={form.control} name="violationType" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Violation Type</FormLabel>
+                <FormControl><Input {...field} data-testid="input-violation-type" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="description" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Description</FormLabel>
+                <FormControl><Textarea rows={3} {...field} data-testid="input-violation-description" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <div className="grid grid-cols-2 gap-3">
+              <FormField control={form.control} name="issuedDate" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Issued Date</FormLabel>
+                  <FormControl><Input type="date" {...field} data-testid="input-violation-issued" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="referenceNumber" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Reference #</FormLabel>
+                  <FormControl><Input {...field} data-testid="input-violation-ref" /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+            <FormField control={form.control} name="status" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Status</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl><SelectTrigger data-testid="select-violation-status"><SelectValue /></SelectTrigger></FormControl>
+                  <SelectContent>
+                    {VIOLATION_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button type="submit" disabled={mutation.isPending} data-testid="button-confirm-add-violation">
+                {mutation.isPending ? "Saving…" : "Add Violation"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const updateViolationSchema = z.object({
+  status: z.enum(VIOLATION_STATUSES),
+  resolvedDate: z.string().optional(),
+});
+
+function UpdateViolationDialog({ jobsiteId, violation, open, onOpenChange }: { jobsiteId: string; violation: JobsiteViolationRow | null; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { toast } = useToast();
+  const form = useForm<z.infer<typeof updateViolationSchema>>({
+    resolver: zodResolver(updateViolationSchema),
+    defaultValues: { status: "open", resolvedDate: "" },
+    values: violation ? { status: violation.status as any, resolvedDate: violation.resolvedDate ?? "" } : undefined,
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (data: z.infer<typeof updateViolationSchema>) => {
+      if (!violation) return;
+      const payload: any = { status: data.status };
+      if (data.resolvedDate) payload.resolvedDate = data.resolvedDate;
+      const res = await apiRequest("PATCH", `/api/jobsites/${jobsiteId}/violations/${violation.id}`, payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/jobsites", jobsiteId, "violations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/compliance/summary"] });
+      onOpenChange(false);
+      toast({ title: "Violation updated" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Update Violation Status</DialogTitle></DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(d => mutation.mutate(d))} className="space-y-4">
+            <FormField control={form.control} name="status" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Status</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl><SelectTrigger data-testid="select-update-violation-status"><SelectValue /></SelectTrigger></FormControl>
+                  <SelectContent>
+                    {VIOLATION_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="resolvedDate" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Resolved Date</FormLabel>
+                <FormControl><Input type="date" {...field} data-testid="input-update-violation-resolved" /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button type="submit" disabled={mutation.isPending} data-testid="button-confirm-update-violation">
+                {mutation.isPending ? "Saving…" : "Update"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ViolationsCard({ jobsiteId, canEdit }: { jobsiteId: string; canEdit: boolean }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<JobsiteViolationRow | null>(null);
+  const { data: violations, isLoading } = useQuery<JobsiteViolationRow[]>({
+    queryKey: ["/api/jobsites", jobsiteId, "violations"],
+  });
+
+  return (
+    <Card data-testid="card-jobsite-violations">
+      <CardHeader>
+        <div className="flex items-center justify-between gap-4">
+          <CardTitle className="text-base flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" /> Violations
+          </CardTitle>
+          {canEdit && (
+            <Button size="sm" variant="outline" onClick={() => setShowAdd(true)} data-testid="button-add-violation">
+              <Plus className="h-4 w-4 mr-1" /> Add Violation
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
+        ) : !violations || violations.length === 0 ? (
+          <div className="text-center py-6 text-muted-foreground text-sm">No violations recorded for this jobsite.</div>
+        ) : (
+          <div className="rounded-md border overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Severity</TableHead>
+                  <TableHead>Issued Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Reference #</TableHead>
+                  {canEdit && <TableHead></TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {violations.map(v => (
+                  <TableRow key={v.id} data-testid={`row-violation-${v.id}`}>
+                    <TableCell className="text-sm uppercase">{v.source}</TableCell>
+                    <TableCell className="text-sm">
+                      <div>{v.violationType}</div>
+                      {v.description && <div className="text-xs text-muted-foreground max-w-xs truncate">{v.description}</div>}
+                    </TableCell>
+                    <TableCell>{severityBadge(v.severity)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{v.issuedDate}</TableCell>
+                    <TableCell>{violationStatusBadge(v.status)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{v.referenceNumber ?? "—"}</TableCell>
+                    {canEdit && (
+                      <TableCell>
+                        <Button
+                          variant="ghost" size="sm"
+                          data-testid={`button-update-violation-${v.id}`}
+                          onClick={() => setEditing(v)}
+                        >
+                          Update
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+      <AddViolationDialog jobsiteId={jobsiteId} open={showAdd} onOpenChange={setShowAdd} />
+      <UpdateViolationDialog
+        jobsiteId={jobsiteId}
+        violation={editing}
+        open={!!editing}
+        onOpenChange={(o) => { if (!o) setEditing(null); }}
+      />
+    </Card>
+  );
+}
+
 const projectTypes = ["ALT", "DEM", "FO", "NB"];
 
 function AddJobsiteForm({ preselectedClientId, onClose }: { preselectedClientId?: string; onClose: () => void }) {
@@ -816,6 +1348,8 @@ function JobsiteDetail({ id }: { id: string }) {
     queryKey: ["/api/templates"],
   });
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
+  const { data: me } = useQuery<{ user: User; organization: Organization }>({ queryKey: ["/api/me"] });
+  const canEditCompliance = me?.user.role === "Admin" || me?.user.role === "Owner";
 
   const templateMap = new Map(templates?.map(t => [t.id, t]) ?? []);
   const userMap = new Map(users?.map(u => [u.id, u]) ?? []);
@@ -956,6 +1490,30 @@ function JobsiteDetail({ id }: { id: string }) {
               <JobsiteTradesTab jobsiteId={id} />
             </CardContent>
           </Card>
+
+          <Card data-testid="card-jobsite-compliance">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Shield className="h-4 w-4" /> Compliance
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="workers">
+                <TabsList data-testid="tabs-jobsite-compliance">
+                  <TabsTrigger value="workers" data-testid="tab-workers">Workers</TabsTrigger>
+                  <TabsTrigger value="audit" data-testid="tab-compliance-audit">Compliance</TabsTrigger>
+                </TabsList>
+                <TabsContent value="workers" className="mt-4">
+                  <WorkersTab jobsiteId={id} canEdit={canEditCompliance} />
+                </TabsContent>
+                <TabsContent value="audit" className="mt-4">
+                  <ComplianceAuditTab jobsiteId={id} />
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+
+          <ViolationsCard jobsiteId={id} canEdit={canEditCompliance} />
 
           <ContactsCard entityType="jobsite" entityId={id} title="Contacts" />
 

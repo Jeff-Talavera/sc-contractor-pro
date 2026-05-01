@@ -1,14 +1,86 @@
 import { useQuery } from "@tanstack/react-query";
-import type { User, Organization, Client, Jobsite, Inspection, Observation } from "@shared/schema";
+import type { User, Organization, Client, Jobsite, Inspection, Observation, OrgComplianceSummary } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Link } from "wouter";
 import {
   Users, Building2, ClipboardCheck, AlertTriangle,
-  ArrowRight, TrendingUp, Clock, CheckCircle2
+  ArrowRight, TrendingUp, Clock, CheckCircle2, Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+function compliancePctBadge(pct: number) {
+  if (pct >= 80) return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">{pct}%</Badge>;
+  if (pct >= 50) return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">{pct}%</Badge>;
+  return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">{pct}%</Badge>;
+}
+
+function ComplianceOverviewCard() {
+  const { data, isLoading } = useQuery<OrgComplianceSummary[]>({
+    queryKey: ["/api/compliance/summary"],
+  });
+
+  const avg = data && data.length > 0
+    ? Math.round(data.reduce((sum, r) => sum + r.compliancePercent, 0) / data.length)
+    : 0;
+
+  return (
+    <Card data-testid="card-compliance-overview">
+      <CardHeader>
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <Shield className="h-4 w-4" /> Compliance Overview
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
+        ) : !data || data.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">
+            No compliance data yet. Assign workers to jobsites to track compliance.
+          </p>
+        ) : (
+          <>
+            <div className="rounded-md border overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Jobsite</TableHead>
+                    <TableHead>Workers</TableHead>
+                    <TableHead>Compliance</TableHead>
+                    <TableHead>Gaps</TableHead>
+                    <TableHead>Violations</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.map(row => (
+                    <TableRow key={row.jobsiteId} data-testid={`row-compliance-${row.jobsiteId}`}>
+                      <TableCell className="text-sm font-medium">
+                        <Link href={`/jobsites/${row.jobsiteId}`}>
+                          <span className="hover:underline cursor-pointer">{row.jobsiteName}</span>
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-sm">{row.totalWorkers}</TableCell>
+                      <TableCell>{compliancePctBadge(row.compliancePercent)}</TableCell>
+                      <TableCell className="text-sm">{row.workersWithGaps}</TableCell>
+                      <TableCell className={`text-sm ${row.openViolations > 0 ? "text-red-600 font-medium" : ""}`}>
+                        {row.openViolations}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-sm text-muted-foreground mt-3" data-testid="text-compliance-avg">
+              Org-wide average compliance: <span className="font-medium">{avg}%</span> across {data.length} jobsite{data.length !== 1 ? "s" : ""}.
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function Dashboard() {
   const { data: me } = useQuery<{ user: User; organization: Organization }>({
@@ -104,6 +176,10 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {(me?.user.role === "Admin" || me?.user.role === "Owner") && (
+            <ComplianceOverviewCard />
           )}
 
           <div className="grid gap-6 lg:grid-cols-2">
